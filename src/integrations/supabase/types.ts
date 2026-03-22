@@ -14,7 +14,334 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      academic_years: {
+        Row: {
+          created_at: string | null
+          end_date: string
+          id: string
+          label: string
+          start_date: string
+          status: string
+          target_tuition_fees: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          end_date: string
+          id?: string
+          label: string
+          start_date: string
+          status?: string
+          target_tuition_fees?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          end_date?: string
+          id?: string
+          label?: string
+          start_date?: string
+          status?: string
+          target_tuition_fees?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      accounts: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_archived: boolean | null
+          name: string
+          starting_balance: number
+          type: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_archived?: boolean | null
+          name: string
+          starting_balance?: number
+          type: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_archived?: boolean | null
+          name?: string
+          starting_balance?: number
+          type?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      backups_log: {
+        Row: {
+          backup_date: string | null
+          backup_type: string
+          file_size: number | null
+          id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          backup_date?: string | null
+          backup_type: string
+          file_size?: number | null
+          id?: string
+          status: string
+          user_id: string
+        }
+        Update: {
+          backup_date?: string | null
+          backup_type?: string
+          file_size?: number | null
+          id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      expense_entries: {
+        Row: {
+          academic_year_id: string
+          account_id: string
+          amount: number
+          category: string
+          created_at: string | null
+          date: string
+          description: string | null
+          expense_type: string
+          id: string
+          is_recurring_instance: boolean | null
+          recurring_template_id: string | null
+          sub_category: string | null
+          tags: string[] | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          academic_year_id: string
+          account_id: string
+          amount: number
+          category: string
+          created_at?: string | null
+          date: string
+          description?: string | null
+          expense_type: string
+          id?: string
+          is_recurring_instance?: boolean | null
+          recurring_template_id?: string | null
+          sub_category?: string | null
+          tags?: string[] | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          academic_year_id?: string
+          account_id?: string
+          amount?: number
+          category?: string
+          created_at?: string | null
+          date?: string
+          description?: string | null
+          expense_type?: string
+          id?: string
+          is_recurring_instance?: boolean | null
+          recurring_template_id?: string | null
+          sub_category?: string | null
+          tags?: string[] | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_entries_academic_year_id_fkey"
+            columns: ["academic_year_id"]
+            isOneToOne: false
+            referencedRelation: "academic_years"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_entries_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      income_entries: {
+        Row: {
+          academic_year_id: string
+          account_id: string
+          amount: number
+          created_at: string | null
+          date: string
+          id: string
+          is_late_collection: boolean | null
+          notes: string | null
+          original_year_id: string | null
+          tags: string[] | null
+          type: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          academic_year_id: string
+          account_id: string
+          amount: number
+          created_at?: string | null
+          date: string
+          id?: string
+          is_late_collection?: boolean | null
+          notes?: string | null
+          original_year_id?: string | null
+          tags?: string[] | null
+          type: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          academic_year_id?: string
+          account_id?: string
+          amount?: number
+          created_at?: string | null
+          date?: string
+          id?: string
+          is_late_collection?: boolean | null
+          notes?: string | null
+          original_year_id?: string | null
+          tags?: string[] | null
+          type?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "income_entries_academic_year_id_fkey"
+            columns: ["academic_year_id"]
+            isOneToOne: false
+            referencedRelation: "academic_years"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_entries_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_entries_original_year_id_fkey"
+            columns: ["original_year_id"]
+            isOneToOne: false
+            referencedRelation: "academic_years"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recurring_templates: {
+        Row: {
+          category: string
+          created_at: string | null
+          default_amount: number | null
+          expense_type: string
+          id: string
+          is_active: boolean | null
+          last_generated_date: string | null
+          recurrence_interval: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          default_amount?: number | null
+          expense_type: string
+          id?: string
+          is_active?: boolean | null
+          last_generated_date?: string | null
+          recurrence_interval: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          default_amount?: number | null
+          expense_type?: string
+          id?: string
+          is_active?: boolean | null
+          last_generated_date?: string | null
+          recurrence_interval?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      transfers: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string | null
+          date: string
+          from_account_id: string
+          id: string
+          notes: string | null
+          to_account_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          category: string
+          created_at?: string | null
+          date: string
+          from_account_id: string
+          id?: string
+          notes?: string | null
+          to_account_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string | null
+          date?: string
+          from_account_id?: string
+          id?: string
+          notes?: string | null
+          to_account_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transfers_from_account_id_fkey"
+            columns: ["from_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfers_to_account_id_fkey"
+            columns: ["to_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
