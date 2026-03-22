@@ -7,68 +7,92 @@ import type {
   Transfer,
   RecurringTemplate,
 } from '@/types/finance';
+import * as academicYearsService from '@/services/academicYears';
+import * as accountsService from '@/services/accounts';
+import * as incomeService from '@/services/income';
+import * as expensesService from '@/services/expenses';
+import * as transfersService from '@/services/transfers';
+import * as recurringService from '@/services/recurring';
 
-// Demo data for UI development
-const DEMO_ACCOUNTS: Account[] = [
-  { id: 'acc-1', name: 'School Account', type: 'school_bank', startingBalance: 500000, isArchived: false },
-  { id: 'acc-2', name: 'HDFC Savings', type: 'personal_bank', startingBalance: 200000, isArchived: false },
-  { id: 'acc-3', name: 'SBI Account', type: 'personal_bank', startingBalance: 150000, isArchived: false },
-  { id: 'acc-4', name: 'ICICI Account', type: 'personal_bank', startingBalance: 100000, isArchived: false },
-  { id: 'acc-5', name: 'Cash at Home', type: 'cash', startingBalance: 50000, isArchived: false },
-];
+function toDate(d: string | Date): Date {
+  return d instanceof Date ? d : new Date(d);
+}
 
-const DEMO_YEARS: AcademicYear[] = [
-  {
-    id: 'ay-1',
-    label: '2024-25',
-    startDate: new Date(2024, 5, 5),
-    endDate: new Date(2025, 5, 4),
-    targetTuitionFees: 3000000,
-    status: 'active',
-  },
-  {
-    id: 'ay-0',
-    label: '2023-24',
-    startDate: new Date(2023, 5, 5),
-    endDate: new Date(2024, 5, 4),
-    targetTuitionFees: 2500000,
-    status: 'pending_collections',
-  },
-];
+function mapAcademicYear(row: academicYearsService.DbAcademicYear): AcademicYear {
+  return {
+    id: row.id,
+    label: row.label,
+    startDate: toDate(row.start_date),
+    endDate: toDate(row.end_date),
+    targetTuitionFees: Number(row.target_tuition_fees),
+    status: row.status,
+  };
+}
 
-const DEMO_INCOME: IncomeEntry[] = [
-  { id: 'inc-1', academicYearId: 'ay-1', type: 'tuition', amount: 450000, date: new Date(2024, 6, 15), accountId: 'acc-1', isLateCollection: false, originalYearId: null, notes: 'July batch fees', tags: ['batch-1'] },
-  { id: 'inc-2', academicYearId: 'ay-1', type: 'tuition', amount: 380000, date: new Date(2024, 7, 10), accountId: 'acc-1', isLateCollection: false, originalYearId: null, notes: 'August collection', tags: [] },
-  { id: 'inc-3', academicYearId: 'ay-1', type: 'tuition', amount: 520000, date: new Date(2024, 8, 5), accountId: 'acc-1', isLateCollection: false, originalYearId: null, notes: 'September fees', tags: [] },
-  { id: 'inc-4', academicYearId: 'ay-1', type: 'tuition', amount: 290000, date: new Date(2024, 9, 12), accountId: 'acc-2', isLateCollection: false, originalYearId: null, notes: 'October partial', tags: [] },
-  { id: 'inc-5', academicYearId: 'ay-1', type: 'tuition', amount: 410000, date: new Date(2024, 10, 8), accountId: 'acc-1', isLateCollection: false, originalYearId: null, notes: 'November collection', tags: [] },
-  { id: 'inc-6', academicYearId: 'ay-1', type: 'lunch', amount: 35000, date: new Date(2024, 6, 30), accountId: 'acc-1', isLateCollection: false, originalYearId: null, notes: 'July lunch', tags: [] },
-  { id: 'inc-7', academicYearId: 'ay-1', type: 'lunch', amount: 38000, date: new Date(2024, 7, 30), accountId: 'acc-1', isLateCollection: false, originalYearId: null, notes: 'August lunch', tags: [] },
-  { id: 'inc-8', academicYearId: 'ay-1', type: 'lunch', amount: 36000, date: new Date(2024, 8, 30), accountId: 'acc-5', isLateCollection: false, originalYearId: null, notes: 'September lunch', tags: [] },
-  { id: 'inc-9', academicYearId: 'ay-1', type: 'lunch', amount: 34000, date: new Date(2024, 9, 30), accountId: 'acc-1', isLateCollection: false, originalYearId: null, notes: 'October lunch', tags: [] },
-  { id: 'inc-10', academicYearId: 'ay-1', type: 'lunch', amount: 37000, date: new Date(2024, 10, 30), accountId: 'acc-1', isLateCollection: false, originalYearId: null, notes: 'November lunch', tags: [] },
-];
+function mapAccount(row: accountsService.DbAccount): Account {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    startingBalance: Number(row.starting_balance),
+    isArchived: row.is_archived,
+  };
+}
 
-const DEMO_EXPENSES: ExpenseEntry[] = [
-  { id: 'exp-1', academicYearId: 'ay-1', expenseType: 'school', category: 'Salary & Wages', amount: 120000, date: new Date(2024, 6, 1), accountId: 'acc-1', description: 'July salaries', tags: [], isRecurringInstance: true, recurringTemplateId: null },
-  { id: 'exp-2', academicYearId: 'ay-1', expenseType: 'school', category: 'Land Rent', amount: 45000, date: new Date(2024, 6, 5), accountId: 'acc-1', description: 'July rent', tags: [], isRecurringInstance: true, recurringTemplateId: null },
-  { id: 'exp-3', academicYearId: 'ay-1', expenseType: 'school', category: 'Electricity Bill', amount: 12000, date: new Date(2024, 6, 15), accountId: 'acc-1', description: 'July electricity', tags: [], isRecurringInstance: true, recurringTemplateId: null },
-  { id: 'exp-4', academicYearId: 'ay-1', expenseType: 'school', category: 'Salary & Wages', amount: 120000, date: new Date(2024, 7, 1), accountId: 'acc-1', description: 'August salaries', tags: [], isRecurringInstance: true, recurringTemplateId: null },
-  { id: 'exp-5', academicYearId: 'ay-1', expenseType: 'school', category: 'Land Rent', amount: 45000, date: new Date(2024, 7, 5), accountId: 'acc-1', description: 'August rent', tags: [], isRecurringInstance: true, recurringTemplateId: null },
-  { id: 'exp-6', academicYearId: 'ay-1', expenseType: 'school', category: 'Academic Supplies', amount: 25000, date: new Date(2024, 7, 20), accountId: 'acc-1', description: 'Books and stationery', tags: ['supplies'], isRecurringInstance: false, recurringTemplateId: null },
-  { id: 'exp-7', academicYearId: 'ay-1', expenseType: 'school', category: 'Salary & Wages', amount: 125000, date: new Date(2024, 8, 1), accountId: 'acc-1', description: 'September salaries', tags: [], isRecurringInstance: true, recurringTemplateId: null },
-  { id: 'exp-8', academicYearId: 'ay-1', expenseType: 'school', category: 'Events & Functions', amount: 55000, date: new Date(2024, 8, 15), accountId: 'acc-2', description: 'Teacher\'s Day celebration', tags: ['event'], isRecurringInstance: false, recurringTemplateId: null },
-  { id: 'exp-9', academicYearId: 'ay-1', expenseType: 'home', category: 'Groceries', amount: 15000, date: new Date(2024, 6, 10), accountId: 'acc-5', description: 'Monthly groceries', tags: [], isRecurringInstance: false, recurringTemplateId: null },
-  { id: 'exp-10', academicYearId: 'ay-1', expenseType: 'home', category: 'Car Fuel', amount: 5000, date: new Date(2024, 6, 20), accountId: 'acc-2', description: 'Petrol', tags: [], isRecurringInstance: false, recurringTemplateId: null },
-  { id: 'exp-11', academicYearId: 'ay-1', expenseType: 'school', category: 'Salary & Wages', amount: 125000, date: new Date(2024, 9, 1), accountId: 'acc-1', description: 'October salaries', tags: [], isRecurringInstance: true, recurringTemplateId: null },
-  { id: 'exp-12', academicYearId: 'ay-1', expenseType: 'school', category: 'Land Rent', amount: 45000, date: new Date(2024, 9, 5), accountId: 'acc-1', description: 'October rent', tags: [], isRecurringInstance: true, recurringTemplateId: null },
-  { id: 'exp-13', academicYearId: 'ay-1', expenseType: 'school', category: 'Infrastructure & Maintenance', amount: 75000, date: new Date(2024, 10, 1), accountId: 'acc-1', description: 'Classroom repairs', tags: ['maintenance'], isRecurringInstance: false, recurringTemplateId: null },
-];
+function mapIncome(row: incomeService.DbIncomeEntry): IncomeEntry {
+  return {
+    id: row.id,
+    academicYearId: row.academic_year_id,
+    type: row.type,
+    amount: Number(row.amount),
+    date: toDate(row.date),
+    accountId: row.account_id,
+    isLateCollection: row.is_late_collection,
+    originalYearId: row.original_year_id,
+    notes: row.notes || '',
+    tags: row.tags || [],
+  };
+}
 
-const DEMO_TRANSFERS: Transfer[] = [
-  { id: 'tr-1', fromAccountId: 'acc-1', toAccountId: 'acc-2', amount: 100000, date: new Date(2024, 7, 15), category: 'school_to_personal', notes: 'Monthly transfer' },
-  { id: 'tr-2', fromAccountId: 'acc-5', toAccountId: 'acc-1', amount: 30000, date: new Date(2024, 8, 1), category: 'cash_deposit', notes: 'Cash fees deposit' },
-];
+function mapExpense(row: expensesService.DbExpenseEntry): ExpenseEntry {
+  return {
+    id: row.id,
+    academicYearId: row.academic_year_id,
+    expenseType: row.expense_type,
+    category: row.category,
+    amount: Number(row.amount),
+    date: toDate(row.date),
+    accountId: row.account_id,
+    description: row.description || '',
+    tags: row.tags || [],
+    isRecurringInstance: row.is_recurring_instance,
+    recurringTemplateId: row.recurring_template_id,
+  };
+}
+
+function mapTransfer(row: transfersService.DbTransfer): Transfer {
+  return {
+    id: row.id,
+    fromAccountId: row.from_account_id,
+    toAccountId: row.to_account_id,
+    amount: Number(row.amount),
+    date: toDate(row.date),
+    category: row.category,
+    notes: row.notes || '',
+  };
+}
+
+function mapRecurring(row: recurringService.DbRecurringTemplate): RecurringTemplate {
+  return {
+    id: row.id,
+    expenseType: row.expense_type,
+    category: row.category,
+    defaultAmount: Number(row.default_amount),
+    recurrenceInterval: row.recurrence_interval,
+    lastGeneratedDate: row.last_generated_date ? toDate(row.last_generated_date) : null,
+    isActive: row.is_active,
+  };
+}
 
 interface FinanceState {
   academicYears: AcademicYear[];
@@ -79,24 +103,107 @@ interface FinanceState {
   recurringTemplates: RecurringTemplate[];
   currentYearId: string;
   isSetupComplete: boolean;
+  isLoading: boolean;
+  isInitialized: boolean;
+  error: string | null;
   isDarkMode: boolean;
   toggleDarkMode: () => void;
+  init: () => Promise<void>;
+  addIncome: (data: incomeService.IncomeInsert) => Promise<void>;
+  addExpense: (data: expensesService.ExpenseInsert) => Promise<void>;
+  addTransfer: (data: transfersService.TransferInsert) => Promise<void>;
 }
 
-export const useFinanceStore = create<FinanceState>((set) => ({
-  academicYears: DEMO_YEARS,
-  accounts: DEMO_ACCOUNTS,
-  incomeEntries: DEMO_INCOME,
-  expenseEntries: DEMO_EXPENSES,
-  transfers: DEMO_TRANSFERS,
+export const useFinanceStore = create<FinanceState>((set, get) => ({
+  academicYears: [],
+  accounts: [],
+  incomeEntries: [],
+  expenseEntries: [],
+  transfers: [],
   recurringTemplates: [],
-  currentYearId: 'ay-1',
-  isSetupComplete: true,
+  currentYearId: '',
+  isSetupComplete: false,
+  isLoading: false,
+  isInitialized: false,
+  error: null,
   isDarkMode: false,
+
   toggleDarkMode: () =>
     set((state) => {
       const next = !state.isDarkMode;
       document.documentElement.classList.toggle('dark', next);
       return { isDarkMode: next };
     }),
+
+  init: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const [yearsRes, accRes, incRes, expRes, trRes, recRes] = await Promise.all([
+        academicYearsService.getAll(),
+        accountsService.getAll(),
+        incomeService.getAll(),
+        expensesService.getAll(),
+        transfersService.getAll(),
+        recurringService.getAll(),
+      ]);
+
+      const years = (yearsRes.data || []).map(mapAcademicYear);
+      const accounts = (accRes.data || []).map(mapAccount);
+      const incomeEntries = (incRes.data || []).map(mapIncome);
+      const expenseEntries = (expRes.data || []).map(mapExpense);
+      const transfers = (trRes.data || []).map(mapTransfer);
+      const recurringTemplates = (recRes.data || []).map(mapRecurring);
+
+      // Find active year (today between start and end)
+      const today = new Date();
+      const activeYear = years.find(
+        (y) => today >= y.startDate && today <= y.endDate
+      );
+      const currentYearId = activeYear?.id || years[0]?.id || '';
+
+      set({
+        academicYears: years,
+        accounts,
+        incomeEntries,
+        expenseEntries,
+        transfers,
+        recurringTemplates,
+        currentYearId,
+        isSetupComplete: accounts.length > 0,
+        isLoading: false,
+        isInitialized: true,
+        error: null,
+      });
+    } catch (err) {
+      set({
+        isLoading: false,
+        isInitialized: true,
+        error: err instanceof Error ? err.message : 'Failed to load data',
+      });
+    }
+  },
+
+  addIncome: async (data) => {
+    const { data: created, error } = await incomeService.create(data);
+    if (error || !created) throw error || new Error('Failed to create income');
+    set((state) => ({
+      incomeEntries: [mapIncome(created), ...state.incomeEntries],
+    }));
+  },
+
+  addExpense: async (data) => {
+    const { data: created, error } = await expensesService.create(data);
+    if (error || !created) throw error || new Error('Failed to create expense');
+    set((state) => ({
+      expenseEntries: [mapExpense(created), ...state.expenseEntries],
+    }));
+  },
+
+  addTransfer: async (data) => {
+    const { data: created, error } = await transfersService.create(data);
+    if (error || !created) throw error || new Error('Failed to create transfer');
+    set((state) => ({
+      transfers: [mapTransfer(created), ...state.transfers],
+    }));
+  },
 }));
