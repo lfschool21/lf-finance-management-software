@@ -6,10 +6,15 @@ import { StatCard } from '@/components/StatCard';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { AddIncomeModal } from '@/components/AddIncomeModal';
+import type { IncomeEntry } from '@/types/finance';
 
 export default function IncomePage() {
   const { incomeEntries, academicYears, currentYearId } = useFinanceStore();
   const [tab, setTab] = useState('tuition');
+  const [showModal, setShowModal] = useState(false);
+  const [editEntry, setEditEntry] = useState<IncomeEntry | undefined>();
+  const [lateYearId, setLateYearId] = useState<string | undefined>();
 
   const currentYear = academicYears.find((y) => y.id === currentYearId);
 
@@ -20,13 +25,12 @@ export default function IncomePage() {
     const tuitionTotal = tuition.reduce((s, i) => s + i.amount, 0);
     const lunchTotal = lunch.reduce((s, i) => s + i.amount, 0);
     const target = currentYear?.targetTuitionFees || 0;
-
     return { tuitionTotal, lunchTotal, target, tuition, lunch };
   }, [incomeEntries, currentYearId, currentYear]);
 
   const pendingYears = useMemo(() => {
     return academicYears
-      .filter((y) => y.status === 'pending_collections')
+      .filter((y) => y.status === 'pending_collections' || true) // check all years
       .map((y) => {
         const collected = incomeEntries
           .filter((i) => i.academicYearId === y.id && i.type === 'tuition')
@@ -46,6 +50,23 @@ export default function IncomePage() {
     return [];
   }, [incomeEntries, currentYearId, tab]);
 
+  function openAdd() {
+    setEditEntry(undefined);
+    setLateYearId(undefined);
+    setShowModal(true);
+  }
+
+  function openEdit(entry: IncomeEntry) {
+    setEditEntry(entry);
+    setShowModal(true);
+  }
+
+  function openLatePayment(yearId: string) {
+    setEditEntry(undefined);
+    setLateYearId(yearId);
+    setShowModal(true);
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -53,7 +74,7 @@ export default function IncomePage() {
           <h1 className="text-2xl font-bold">Income</h1>
           <p className="text-sm text-muted-foreground">AY {currentYear?.label}</p>
         </div>
-        <Button className="gap-1.5 bg-income text-income-foreground hover:bg-income/90">
+        <Button className="gap-1.5 bg-income text-income-foreground hover:bg-income/90" onClick={openAdd}>
           <Plus className="h-4 w-4" />
           Add Income
         </Button>
@@ -63,12 +84,7 @@ export default function IncomePage() {
         <StatCard title="Tuition Collected" value={formatINRAbbr(stats.tuitionTotal)} icon={IndianRupee} variant="income" />
         <StatCard title="Lunch Collected" value={formatINRAbbr(stats.lunchTotal)} icon={UtensilsCrossed} variant="income" />
         <StatCard title="Target" value={formatINRAbbr(stats.target)} icon={TrendingUp} variant="balance" />
-        <StatCard
-          title="Remaining"
-          value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionTotal))}
-          icon={Clock}
-          variant="pending"
-        />
+        <StatCard title="Remaining" value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionTotal))} icon={Clock} variant="pending" />
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -86,11 +102,11 @@ export default function IncomePage() {
         </TabsList>
 
         <TabsContent value="tuition" className="mt-4">
-          <TransactionList entries={filteredEntries} type="income" />
+          <TransactionList entries={filteredEntries} onEdit={openEdit} />
         </TabsContent>
 
         <TabsContent value="lunch" className="mt-4">
-          <TransactionList entries={filteredEntries} type="income" />
+          <TransactionList entries={filteredEntries} onEdit={openEdit} />
         </TabsContent>
 
         <TabsContent value="pending" className="mt-4 space-y-3">
@@ -124,7 +140,7 @@ export default function IncomePage() {
                     <p className="text-xs text-muted-foreground">remaining</p>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" className="mt-3">
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => openLatePayment(y.id)}>
                   Record Late Payment
                 </Button>
               </div>
@@ -132,16 +148,18 @@ export default function IncomePage() {
           )}
         </TabsContent>
       </Tabs>
+
+      <AddIncomeModal isOpen={showModal} onClose={() => setShowModal(false)} editEntry={editEntry} />
     </div>
   );
 }
 
 function TransactionList({
   entries,
-  type,
+  onEdit,
 }: {
-  entries: { id: string; amount: number; date: Date; notes: string }[];
-  type: 'income' | 'expense';
+  entries: IncomeEntry[];
+  onEdit: (entry: IncomeEntry) => void;
 }) {
   if (entries.length === 0) return <EmptyState message="No entries yet. Add your first one!" />;
 
@@ -149,20 +167,19 @@ function TransactionList({
   return (
     <div className="divide-y rounded-lg border bg-card">
       {sorted.map((entry) => (
-        <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
+        <div
+          key={entry.id}
+          className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+          onClick={() => onEdit(entry)}
+        >
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">{entry.notes || 'No description'}</p>
             <p className="text-xs text-muted-foreground">
               {entry.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
           </div>
-          <span
-            className={cn(
-              'font-mono text-sm font-semibold',
-              type === 'income' ? 'text-income' : 'text-expense'
-            )}
-          >
-            {type === 'income' ? '+' : '-'}{formatINR(entry.amount)}
+          <span className="font-mono text-sm font-semibold text-income">
+            +{formatINR(entry.amount)}
           </span>
         </div>
       ))}

@@ -1,9 +1,11 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { ArrowLeftRight, Plus, ArrowRight } from 'lucide-react';
 import { useFinanceStore } from '@/store/finance-store';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { TransferModal } from '@/components/TransferModal';
+import type { Transfer } from '@/types/finance';
 
 const ACCOUNT_TYPE_ICON: Record<string, string> = {
   school_bank: '🏫',
@@ -12,42 +14,41 @@ const ACCOUNT_TYPE_ICON: Record<string, string> = {
 };
 
 export default function TransfersPage() {
-  const { accounts, transfers, incomeEntries, expenseEntries } = useFinanceStore();
+  const { accounts, transfers, getAccountBalance } = useFinanceStore();
+  const [showModal, setShowModal] = useState(false);
+  const [editEntry, setEditEntry] = useState<Transfer | undefined>();
 
   const accountBalances = useMemo(() => {
-    return accounts.filter((a) => !a.isArchived).map((acc) => {
-      const inflow = incomeEntries
-        .filter((i) => i.accountId === acc.id)
-        .reduce((s, i) => s + i.amount, 0);
-      const outflow = expenseEntries
-        .filter((e) => e.accountId === acc.id)
-        .reduce((s, e) => s + e.amount, 0);
-      const transfersIn = transfers
-        .filter((t) => t.toAccountId === acc.id)
-        .reduce((s, t) => s + t.amount, 0);
-      const transfersOut = transfers
-        .filter((t) => t.fromAccountId === acc.id)
-        .reduce((s, t) => s + t.amount, 0);
-      const balance = acc.startingBalance + inflow - outflow + transfersIn - transfersOut;
-      return { ...acc, balance };
-    });
-  }, [accounts, incomeEntries, expenseEntries, transfers]);
+    return accounts.filter((a) => !a.isArchived).map((acc) => ({
+      ...acc,
+      balance: getAccountBalance(acc.id),
+    }));
+  }, [accounts, getAccountBalance]);
 
   const sortedTransfers = [...transfers].sort((a, b) => b.date.getTime() - a.date.getTime());
 
   const getAccountName = (id: string) => accounts.find((a) => a.id === id)?.name || 'Unknown';
 
+  function openAdd() {
+    setEditEntry(undefined);
+    setShowModal(true);
+  }
+
+  function openEdit(entry: Transfer) {
+    setEditEntry(entry);
+    setShowModal(true);
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Transfers & Accounts</h1>
-        <Button className="gap-1.5">
+        <Button className="gap-1.5" onClick={openAdd}>
           <Plus className="h-4 w-4" />
           Transfer Money
         </Button>
       </div>
 
-      {/* Account Cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {accountBalances.map((acc) => (
           <div key={acc.id} className="rounded-lg border bg-card p-4">
@@ -67,7 +68,6 @@ export default function TransfersPage() {
         ))}
       </div>
 
-      {/* Transfer History */}
       <div>
         <h3 className="mb-3 text-sm font-semibold">Transfer History</h3>
         {sortedTransfers.length === 0 ? (
@@ -78,7 +78,11 @@ export default function TransfersPage() {
         ) : (
           <div className="divide-y rounded-lg border bg-card">
             {sortedTransfers.map((t) => (
-              <div key={t.id} className="flex items-center gap-3 px-4 py-3">
+              <div
+                key={t.id}
+                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+                onClick={() => openEdit(t)}
+              >
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                   <ArrowLeftRight className="h-4 w-4 text-primary" />
                 </div>
@@ -99,6 +103,8 @@ export default function TransfersPage() {
           </div>
         )}
       </div>
+
+      <TransferModal isOpen={showModal} onClose={() => setShowModal(false)} editEntry={editEntry} />
     </div>
   );
 }

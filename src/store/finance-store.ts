@@ -110,8 +110,17 @@ interface FinanceState {
   toggleDarkMode: () => void;
   init: () => Promise<void>;
   addIncome: (data: incomeService.IncomeInsert) => Promise<void>;
+  updateIncome: (id: string, data: Partial<incomeService.IncomeInsert>) => Promise<void>;
+  deleteIncome: (id: string) => Promise<void>;
   addExpense: (data: expensesService.ExpenseInsert) => Promise<void>;
+  updateExpense: (id: string, data: Partial<expensesService.ExpenseInsert>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
   addTransfer: (data: transfersService.TransferInsert) => Promise<void>;
+  updateTransfer: (id: string, data: Partial<transfersService.TransferInsert>) => Promise<void>;
+  deleteTransfer: (id: string) => Promise<void>;
+  getAccountBalance: (accountId: string) => number;
+  getTotalBalance: () => number;
+  getYearForDate: (date: Date) => AcademicYear | undefined;
 }
 
 export const useFinanceStore = create<FinanceState>((set, get) => ({
@@ -154,7 +163,6 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       const transfers = (trRes.data || []).map(mapTransfer);
       const recurringTemplates = (recRes.data || []).map(mapRecurring);
 
-      // Find active year (today between start and end)
       const today = new Date();
       const activeYear = years.find(
         (y) => today >= y.startDate && today <= y.endDate
@@ -191,11 +199,43 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     }));
   },
 
+  updateIncome: async (id, data) => {
+    const { data: updated, error } = await incomeService.update(id, data);
+    if (error || !updated) throw error || new Error('Failed to update income');
+    set((state) => ({
+      incomeEntries: state.incomeEntries.map((e) => (e.id === id ? mapIncome(updated) : e)),
+    }));
+  },
+
+  deleteIncome: async (id) => {
+    const { error } = await incomeService.deleteEntry(id);
+    if (error) throw error;
+    set((state) => ({
+      incomeEntries: state.incomeEntries.filter((e) => e.id !== id),
+    }));
+  },
+
   addExpense: async (data) => {
     const { data: created, error } = await expensesService.create(data);
     if (error || !created) throw error || new Error('Failed to create expense');
     set((state) => ({
       expenseEntries: [mapExpense(created), ...state.expenseEntries],
+    }));
+  },
+
+  updateExpense: async (id, data) => {
+    const { data: updated, error } = await expensesService.update(id, data);
+    if (error || !updated) throw error || new Error('Failed to update expense');
+    set((state) => ({
+      expenseEntries: state.expenseEntries.map((e) => (e.id === id ? mapExpense(updated) : e)),
+    }));
+  },
+
+  deleteExpense: async (id) => {
+    const { error } = await expensesService.deleteEntry(id);
+    if (error) throw error;
+    set((state) => ({
+      expenseEntries: state.expenseEntries.filter((e) => e.id !== id),
     }));
   },
 
@@ -205,5 +245,54 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     set((state) => ({
       transfers: [mapTransfer(created), ...state.transfers],
     }));
+  },
+
+  updateTransfer: async (id, data) => {
+    const { data: updated, error } = await transfersService.update(id, data);
+    if (error || !updated) throw error || new Error('Failed to update transfer');
+    set((state) => ({
+      transfers: state.transfers.map((t) => (t.id === id ? mapTransfer(updated) : t)),
+    }));
+  },
+
+  deleteTransfer: async (id) => {
+    const { error } = await transfersService.deleteEntry(id);
+    if (error) throw error;
+    set((state) => ({
+      transfers: state.transfers.filter((t) => t.id !== id),
+    }));
+  },
+
+  getAccountBalance: (accountId: string) => {
+    const state = get();
+    const account = state.accounts.find((a) => a.id === accountId);
+    if (!account) return 0;
+    const income = state.incomeEntries
+      .filter((i) => i.accountId === accountId)
+      .reduce((s, i) => s + i.amount, 0);
+    const expenses = state.expenseEntries
+      .filter((e) => e.accountId === accountId)
+      .reduce((s, e) => s + e.amount, 0);
+    const transfersIn = state.transfers
+      .filter((t) => t.toAccountId === accountId)
+      .reduce((s, t) => s + t.amount, 0);
+    const transfersOut = state.transfers
+      .filter((t) => t.fromAccountId === accountId)
+      .reduce((s, t) => s + t.amount, 0);
+    return account.startingBalance + income - expenses + transfersIn - transfersOut;
+  },
+
+  getTotalBalance: () => {
+    const state = get();
+    return state.accounts
+      .filter((a) => !a.isArchived)
+      .reduce((sum, a) => sum + get().getAccountBalance(a.id), 0);
+  },
+
+  getYearForDate: (date: Date) => {
+    const state = get();
+    return state.academicYears.find(
+      (y) => date >= y.startDate && date <= y.endDate
+    );
   },
 }));
