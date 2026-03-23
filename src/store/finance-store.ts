@@ -248,12 +248,10 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
   },
 
   updateTransfer: async (id, data) => {
-    const res = await transfersService.create({ ...data } as transfersService.TransferInsert);
-    // transfers service doesn't have update, so delete + re-create
-    await transfersService.deleteEntry(id);
-    if (res.error || !res.data) throw res.error || new Error('Failed to update transfer');
+    const { data: updated, error } = await transfersService.update(id, data);
+    if (error || !updated) throw error || new Error('Failed to update transfer');
     set((state) => ({
-      transfers: [mapTransfer(res.data!), ...state.transfers.filter((t) => t.id !== id)],
+      transfers: state.transfers.map((t) => (t.id === id ? mapTransfer(updated) : t)),
     }));
   },
 
