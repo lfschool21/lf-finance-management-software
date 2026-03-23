@@ -41,6 +41,16 @@ export async function create(input: TransferInsert) {
   return { data: data as DbTransfer | null, error };
 }
 
+export async function update(id: string, input: Partial<TransferInsert>) {
+  const { data, error } = await supabase
+    .from('transfers')
+    .update(input)
+    .eq('id', id)
+    .select()
+    .single();
+  return { data: data as DbTransfer | null, error };
+}
+
 export async function deleteEntry(id: string) {
   const { error } = await supabase.from('transfers').delete().eq('id', id);
   return { error };
