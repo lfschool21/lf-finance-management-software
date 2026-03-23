@@ -6,10 +6,14 @@ import { StatCard } from '@/components/StatCard';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { AddExpenseModal } from '@/components/AddExpenseModal';
+import type { ExpenseEntry } from '@/types/finance';
 
 export default function ExpensesPage() {
   const { expenseEntries, currentYearId, academicYears } = useFinanceStore();
   const [tab, setTab] = useState('all');
+  const [showModal, setShowModal] = useState(false);
+  const [editEntry, setEditEntry] = useState<ExpenseEntry | undefined>();
   const currentYear = academicYears.find((y) => y.id === currentYearId);
 
   const stats = useMemo(() => {
@@ -28,6 +32,21 @@ export default function ExpensesPage() {
 
   const sorted = [...filtered].sort((a, b) => b.date.getTime() - a.date.getTime());
 
+  function openAdd() {
+    setEditEntry(undefined);
+    setShowModal(true);
+  }
+
+  function openEdit(entry: ExpenseEntry) {
+    setEditEntry(entry);
+    setShowModal(true);
+  }
+
+  function handleEditExisting(entry: ExpenseEntry) {
+    setEditEntry(entry);
+    setShowModal(true);
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -35,7 +54,7 @@ export default function ExpensesPage() {
           <h1 className="text-2xl font-bold">Expenses</h1>
           <p className="text-sm text-muted-foreground">AY {currentYear?.label}</p>
         </div>
-        <Button variant="destructive" className="gap-1.5">
+        <Button variant="destructive" className="gap-1.5" onClick={openAdd}>
           <Plus className="h-4 w-4" />
           Add Expense
         </Button>
@@ -66,7 +85,11 @@ export default function ExpensesPage() {
           ) : (
             <div className="divide-y rounded-lg border bg-card">
               {sorted.map((entry) => (
-                <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
+                <div
+                  key={entry.id}
+                  className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+                  onClick={() => openEdit(entry)}
+                >
                   <div
                     className={cn(
                       'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg',
@@ -87,11 +110,7 @@ export default function ExpensesPage() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {entry.date.toLocaleDateString('en-IN', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
+                      {entry.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                       {entry.description && ` • ${entry.description}`}
                     </p>
                   </div>
@@ -104,6 +123,13 @@ export default function ExpensesPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      <AddExpenseModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        editEntry={editEntry}
+        onEditExisting={handleEditExisting}
+      />
     </div>
   );
 }
