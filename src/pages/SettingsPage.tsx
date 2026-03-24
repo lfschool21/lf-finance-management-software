@@ -255,7 +255,8 @@ export default function SettingsPage() {
         for (const table of restoreOrder) {
           const rows = (backup.data as Record<string, unknown[]>)[table];
           if (rows && rows.length > 0) {
-            await supabase.from(table).insert(rows as Record<string, unknown>[]);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await supabase.from(table).insert(rows as any);
           }
         }
 
