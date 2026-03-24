@@ -11,6 +11,7 @@ import {
   ClipboardList,
   School,
   Home,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   BarChart,
@@ -23,6 +24,7 @@ import {
   Pie,
   Cell,
 } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 import { useFinanceStore } from '@/store/finance-store';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { StatCard } from '@/components/StatCard';
@@ -32,48 +34,51 @@ import { cn } from '@/lib/utils';
 import { AddIncomeModal } from '@/components/AddIncomeModal';
 import { AddExpenseModal } from '@/components/AddExpenseModal';
 import { TransferModal } from '@/components/TransferModal';
+import { RecurringReviewModal } from '@/components/RecurringReviewModal';
 
 const CHART_COLORS = [
-  'hsl(210, 52%, 25%)',
-  'hsl(160, 84%, 39%)',
-  'hsl(0, 84%, 60%)',
-  'hsl(38, 92%, 50%)',
-  'hsl(280, 60%, 50%)',
-  'hsl(190, 70%, 45%)',
-  'hsl(330, 70%, 50%)',
-  'hsl(60, 80%, 45%)',
+  'hsl(210, 52%, 25%)', 'hsl(160, 84%, 39%)', 'hsl(0, 84%, 60%)',
+  'hsl(38, 92%, 50%)', 'hsl(280, 60%, 50%)', 'hsl(190, 70%, 45%)',
+  'hsl(330, 70%, 50%)', 'hsl(60, 80%, 45%)',
 ];
 
 const MONTHS = ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
 
 export default function Dashboard() {
-  const { incomeEntries, expenseEntries, accounts, academicYears, currentYearId, transfers, getTotalBalance } =
-    useFinanceStore();
+  const {
+    incomeEntries, expenseEntries, accounts, academicYears, currentYearId,
+    transfers, getTotalBalance, getYearProfitBreakdown, getProjectedProfit,
+    pendingRecurringItems,
+  } = useFinanceStore();
+  const navigate = useNavigate();
 
   const [showIncome, setShowIncome] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showRecurring, setShowRecurring] = useState(false);
 
   const currentYear = academicYears.find((y) => y.id === currentYearId);
 
   const stats = useMemo(() => {
-    const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
-    const yearExpenses = expenseEntries.filter((e) => e.academicYearId === currentYearId);
+    const breakdown = getYearProfitBreakdown(currentYearId);
+    const projected = getProjectedProfit(currentYearId);
 
-    const totalIncome = yearIncome.reduce((s, i) => s + i.amount, 0);
-    const totalSchoolExpenses = yearExpenses
-      .filter((e) => e.expenseType === 'school')
-      .reduce((s, e) => s + e.amount, 0);
-    const netProfit = totalIncome - totalSchoolExpenses;
-
-    const tuitionCollected = yearIncome
-      .filter((i) => i.type === 'tuition')
+    const tuitionCollected = incomeEntries
+      .filter((i) => i.academicYearId === currentYearId && i.type === 'tuition')
       .reduce((s, i) => s + i.amount, 0);
     const target = currentYear?.targetTuitionFees || 0;
     const feeProgress = target > 0 ? Math.round((tuitionCollected / target) * 100) : 0;
 
-    const totalPending = academicYears
-      .filter((y) => y.status === 'pending_collections')
+    const totalPending = academicYears.reduce((s, y) => {
+      const collected = incomeEntries
+        .filter((i) => i.academicYearId === y.id && i.type === 'tuition')
+        .reduce((sum, i) => sum + i.amount, 0);
+      const remaining = Math.max(0, y.targetTuitionFees - collected);
+      return s + remaining;
+    }, 0) - Math.max(0, target - tuitionCollected); // exclude current year from "pending from previous"
+
+    const prevPending = academicYears
+      .filter((y) => y.id !== currentYearId)
       .reduce((s, y) => {
         const collected = incomeEntries
           .filter((i) => i.academicYearId === y.id && i.type === 'tuition')
@@ -83,15 +88,16 @@ export default function Dashboard() {
 
     const totalBalance = getTotalBalance();
 
-    // All-time cumulative profit
-    const cumulativeProfit = academicYears.reduce((s, y) => {
-      const yInc = incomeEntries.filter((i) => i.academicYearId === y.id).reduce((sum, i) => sum + i.amount, 0);
-      const yExp = expenseEntries.filter((e) => e.academicYearId === y.id && e.expenseType === 'school').reduce((sum, e) => sum + e.amount, 0);
-      return s + (yInc - yExp);
-    }, 0);
-
-    return { totalIncome, totalSchoolExpenses, netProfit, tuitionCollected, target, feeProgress, totalPending, totalBalance, cumulativeProfit };
-  }, [incomeEntries, expenseEntries, accounts, academicYears, currentYearId, currentYear, transfers, getTotalBalance]);
+    return {
+      ...breakdown,
+      projected,
+      tuitionCollected,
+      target,
+      feeProgress,
+      prevPending,
+      totalBalance,
+    };
+  }, [incomeEntries, expenseEntries, accounts, academicYears, currentYearId, currentYear, transfers, getTotalBalance, getYearProfitBreakdown, getProjectedProfit]);
 
   const monthlyData = useMemo(() => {
     const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
@@ -115,11 +121,11 @@ export default function Dashboard() {
     const all = [
       ...incomeEntries.map((i) => ({
         id: i.id, date: i.date, category: i.type === 'tuition' ? 'Tuition Fees' : 'Lunch Fees',
-        amount: i.amount, isIncome: true, type: null as string | null, accountId: i.accountId,
+        amount: i.amount, isIncome: true, type: null as string | null,
       })),
       ...expenseEntries.map((e) => ({
         id: e.id, date: e.date, category: e.category, amount: e.amount,
-        isIncome: false, type: e.expenseType, accountId: e.accountId,
+        isIncome: false, type: e.expenseType,
       })),
     ];
     return all.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 10);
@@ -136,13 +142,35 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      {/* Alert banners */}
+      {stats.prevPending > 0 && (
+        <div
+          className="flex cursor-pointer items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3"
+          onClick={() => navigate('/income')}
+        >
+          <AlertTriangle className="h-5 w-5 text-warning" />
+          <p className="text-sm font-medium">⚠️ Pending: {formatINR(stats.prevPending)} from previous years → View Details</p>
+        </div>
+      )}
+
+      {pendingRecurringItems.length > 0 && (
+        <div
+          className="flex cursor-pointer items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3"
+          onClick={() => setShowRecurring(true)}
+        >
+          <ClipboardList className="h-5 w-5 text-primary" />
+          <p className="text-sm font-medium">📋 {pendingRecurringItems.length} recurring item{pendingRecurringItems.length !== 1 ? 's' : ''} need review → Review Now</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
         <StatCard title="Total Income" value={formatINRAbbr(stats.totalIncome)} icon={IndianRupee} variant="income" subtitle="Tuition + Lunch" />
-        <StatCard title="School Expenses" value={formatINRAbbr(stats.totalSchoolExpenses)} icon={TrendingDown} variant="expense" />
+        <StatCard title="School Expenses" value={formatINRAbbr(stats.fixedExpenses + stats.extraExpenses)} icon={TrendingDown} variant="expense" />
         <StatCard title="Net Profit" value={formatINRAbbr(stats.netProfit)} icon={BarChart3} variant={stats.netProfit >= 0 ? 'profit' : 'expense'} subtitle="School only" />
         <StatCard title="All Balances" value={formatINRAbbr(stats.totalBalance)} icon={Landmark} variant="balance" />
-        <StatCard title="Pending Fees" value={formatINRAbbr(stats.totalPending)} icon={Clock} variant="pending" subtitle="All years" />
-        <StatCard title="Cumulative Profit" value={formatINRAbbr(stats.cumulativeProfit)} icon={TrendingUp} variant="cumulative" subtitle="All-time" />
+        <StatCard title="Pending Fees" value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionCollected))} icon={Clock} variant="pending" subtitle="This year" />
+        <StatCard title="Gross Profit" value={formatINRAbbr(stats.grossProfit)} icon={TrendingUp} variant="cumulative" subtitle="Income - Fixed" />
+        <StatCard title="Projected Profit" value={formatINRAbbr(stats.projected)} icon={TrendingUp} variant="profit" subtitle="By year end" />
       </div>
 
       <div className="rounded-lg border bg-card p-4">
@@ -168,9 +196,11 @@ export default function Dashboard() {
         <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowTransfer(true)}>
           <ArrowLeftRight className="h-4 w-4" /> Transfer Money
         </Button>
-        <Button size="sm" variant="outline" className="gap-1.5">
-          <ClipboardList className="h-4 w-4" /> Recurring Review
-        </Button>
+        {pendingRecurringItems.length > 0 && (
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowRecurring(true)}>
+            <ClipboardList className="h-4 w-4" /> Recurring Review ({pendingRecurringItems.length})
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -255,6 +285,7 @@ export default function Dashboard() {
       <AddIncomeModal isOpen={showIncome} onClose={() => setShowIncome(false)} />
       <AddExpenseModal isOpen={showExpense} onClose={() => setShowExpense(false)} />
       <TransferModal isOpen={showTransfer} onClose={() => setShowTransfer(false)} />
+      <RecurringReviewModal isOpen={showRecurring} onClose={() => setShowRecurring(false)} />
     </div>
   );
 }
