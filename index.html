@@ -6,6 +6,7 @@
     <title>Little Flowers Finance Tracker</title>
     <meta name="description" content="Private encrypted financial management for Little Flowers School" />
     <meta name="theme-color" content="#1e3a5f" />
+    <link rel="manifest" href="/manifest.json" />
     <meta property="og:title" content="Little Flowers Finance Tracker" />
     <meta property="og:description" content="Private encrypted financial management for Little Flowers School" />
     <meta property="og:type" content="website" />
@@ -14,5 +15,12 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>

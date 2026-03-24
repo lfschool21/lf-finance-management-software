@@ -7,6 +7,7 @@ import type {
   Transfer,
   RecurringTemplate,
 } from '@/types/finance';
+import { FIXED_EXPENSE_CATEGORIES } from '@/types/finance';
 import * as academicYearsService from '@/services/academicYears';
 import * as accountsService from '@/services/accounts';
 import * as incomeService from '@/services/income';
@@ -94,6 +95,21 @@ function mapRecurring(row: recurringService.DbRecurringTemplate): RecurringTempl
   };
 }
 
+export interface PendingRecurringItem {
+  template: RecurringTemplate;
+  lastAmount: number;
+}
+
+export interface YearProfitBreakdown {
+  totalIncome: number;
+  fixedExpenses: number;
+  grossProfit: number;
+  extraExpenses: number;
+  netProfit: number;
+  fixedBreakdown: { category: string; amount: number }[];
+  extraBreakdown: { category: string; amount: number }[];
+}
+
 interface FinanceState {
   academicYears: AcademicYear[];
   accounts: Account[];
@@ -107,6 +123,7 @@ interface FinanceState {
   isInitialized: boolean;
   error: string | null;
   isDarkMode: boolean;
+  pendingRecurringItems: PendingRecurringItem[];
   toggleDarkMode: () => void;
   init: () => Promise<void>;
   addIncome: (data: incomeService.IncomeInsert) => Promise<void>;
@@ -121,6 +138,12 @@ interface FinanceState {
   getAccountBalance: (accountId: string) => number;
   getTotalBalance: () => number;
   getYearForDate: (date: Date) => AcademicYear | undefined;
+  getYearProfitBreakdown: (yearId: string) => YearProfitBreakdown;
+  getAllTimeCumulativeProfit: () => number;
+  getProjectedProfit: (yearId: string) => number;
+  refreshAccounts: () => Promise<void>;
+  refreshAcademicYears: () => Promise<void>;
+  refreshRecurringTemplates: () => Promise<void>;
 }
 
 export const useFinanceStore = create<FinanceState>((set, get) => ({
@@ -136,11 +159,13 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
   isInitialized: false,
   error: null,
   isDarkMode: false,
+  pendingRecurringItems: [],
 
   toggleDarkMode: () =>
     set((state) => {
       const next = !state.isDarkMode;
       document.documentElement.classList.toggle('dark', next);
+      localStorage.setItem('darkMode', next ? '1' : '0');
       return { isDarkMode: next };
     }),
 
@@ -169,6 +194,46 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       );
       const currentYearId = activeYear?.id || years[0]?.id || '';
 
+      // Check pending recurring
+      const currentMonth = today.getMonth();
+      const currentFullYear = today.getFullYear();
+      const pendingRecurringItems: PendingRecurringItem[] = [];
+
+      for (const template of recurringTemplates) {
+        if (!template.isActive) continue;
+
+        const hasThisMonth = expenseEntries.some(
+          (e) =>
+            e.isRecurringInstance &&
+            e.category === template.category &&
+            e.date.getMonth() === currentMonth &&
+            e.date.getFullYear() === currentFullYear
+        );
+
+        if (!hasThisMonth) {
+          let needsGeneration = true;
+          if (template.recurrenceInterval === 'bimonthly' && template.lastGeneratedDate) {
+            const lastGen = template.lastGeneratedDate;
+            const monthsDiff = (currentFullYear - lastGen.getFullYear()) * 12 + (currentMonth - lastGen.getMonth());
+            if (monthsDiff < 2) needsGeneration = false;
+          }
+
+          if (needsGeneration) {
+            // Find last month's amount for reference
+            const prevEntries = expenseEntries
+              .filter((e) => e.isRecurringInstance && e.category === template.category)
+              .sort((a, b) => b.date.getTime() - a.date.getTime());
+            const lastAmount = prevEntries[0]?.amount || template.defaultAmount;
+
+            pendingRecurringItems.push({ template, lastAmount });
+          }
+        }
+      }
+
+      // Restore dark mode
+      const savedDark = localStorage.getItem('darkMode') === '1';
+      if (savedDark) document.documentElement.classList.add('dark');
+
       set({
         academicYears: years,
         accounts,
@@ -181,6 +246,8 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         isLoading: false,
         isInitialized: true,
         error: null,
+        isDarkMode: savedDark,
+        pendingRecurringItems,
       });
     } catch (err) {
       set({
@@ -294,5 +361,99 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     return state.academicYears.find(
       (y) => date >= y.startDate && date <= y.endDate
     );
+  },
+
+  getYearProfitBreakdown: (yearId: string): YearProfitBreakdown => {
+    const state = get();
+    const fixedCats = FIXED_EXPENSE_CATEGORIES as readonly string[];
+
+    // Income: regular + late collections attributed to this year
+    const yearIncome = state.incomeEntries.filter(
+      (i) => i.academicYearId === yearId || (i.isLateCollection && i.originalYearId === yearId)
+    );
+    const totalIncome = yearIncome.reduce((s, i) => s + i.amount, 0);
+
+    // School expenses only
+    const yearSchoolExpenses = state.expenseEntries.filter(
+      (e) => e.academicYearId === yearId && e.expenseType === 'school'
+    );
+
+    const fixedMap = new Map<string, number>();
+    const extraMap = new Map<string, number>();
+
+    yearSchoolExpenses.forEach((e) => {
+      if (fixedCats.includes(e.category)) {
+        fixedMap.set(e.category, (fixedMap.get(e.category) || 0) + e.amount);
+      } else {
+        extraMap.set(e.category, (extraMap.get(e.category) || 0) + e.amount);
+      }
+    });
+
+    const fixedExpenses = Array.from(fixedMap.values()).reduce((s, v) => s + v, 0);
+    const extraExpenses = Array.from(extraMap.values()).reduce((s, v) => s + v, 0);
+
+    return {
+      totalIncome,
+      fixedExpenses,
+      grossProfit: totalIncome - fixedExpenses,
+      extraExpenses,
+      netProfit: totalIncome - fixedExpenses - extraExpenses,
+      fixedBreakdown: Array.from(fixedMap.entries()).map(([category, amount]) => ({ category, amount })),
+      extraBreakdown: Array.from(extraMap.entries()).map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount),
+    };
+  },
+
+  getAllTimeCumulativeProfit: () => {
+    const state = get();
+    return state.academicYears.reduce((sum, y) => {
+      return sum + get().getYearProfitBreakdown(y.id).netProfit;
+    }, 0);
+  },
+
+  getProjectedProfit: (yearId: string) => {
+    const state = get();
+    const year = state.academicYears.find((y) => y.id === yearId);
+    if (!year) return 0;
+
+    const today = new Date();
+    const monthsElapsed = Math.max(1,
+      (today.getFullYear() - year.startDate.getFullYear()) * 12 +
+      (today.getMonth() - year.startDate.getMonth()) + 1
+    );
+    const totalMonths = Math.max(1,
+      (year.endDate.getFullYear() - year.startDate.getFullYear()) * 12 +
+      (year.endDate.getMonth() - year.startDate.getMonth()) + 1
+    );
+    const remainingMonths = Math.max(0, totalMonths - monthsElapsed);
+
+    const breakdown = get().getYearProfitBreakdown(yearId);
+    const currentSchoolExpenses = breakdown.fixedExpenses + breakdown.extraExpenses;
+    const avgMonthlyExpense = currentSchoolExpenses / monthsElapsed;
+    const projectedExpenses = currentSchoolExpenses + (avgMonthlyExpense * remainingMonths);
+
+    // Projected income = current + uncollected
+    const uncollected = Math.max(0, (year.targetTuitionFees || 0) - 
+      state.incomeEntries
+        .filter((i) => i.academicYearId === yearId && i.type === 'tuition')
+        .reduce((s, i) => s + i.amount, 0)
+    );
+    const projectedIncome = breakdown.totalIncome + uncollected;
+
+    return projectedIncome - projectedExpenses;
+  },
+
+  refreshAccounts: async () => {
+    const { data } = await accountsService.getAll();
+    if (data) set({ accounts: data.map(mapAccount) });
+  },
+
+  refreshAcademicYears: async () => {
+    const { data } = await academicYearsService.getAll();
+    if (data) set({ academicYears: data.map(mapAcademicYear) });
+  },
+
+  refreshRecurringTemplates: async () => {
+    const { data } = await recurringService.getAll();
+    if (data) set({ recurringTemplates: data.map(mapRecurring) });
   },
 }));
