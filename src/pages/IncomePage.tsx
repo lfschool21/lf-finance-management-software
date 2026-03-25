@@ -96,7 +96,7 @@ export default function IncomePage() {
     setTargetSaving(false);
   }
 
-  const feeProgress = stats.target > 0 ? Math.round((stats.tuitionCollected || stats.tuitionTotal) / stats.target * 100) : 0;
+  const feeProgress = stats.target > 0 ? Math.round((stats.tuitionTotal / stats.target) * 100) : 0;
 
   return (
     <div className="space-y-6 animate-fade-in">
