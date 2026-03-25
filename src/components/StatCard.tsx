@@ -1,5 +1,11 @@
 import { cn } from '@/lib/utils';
 import { LucideIcon } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface StatCardProps {
   title: string;
@@ -8,6 +14,7 @@ interface StatCardProps {
   variant: 'income' | 'expense' | 'profit' | 'balance' | 'pending' | 'cumulative';
   subtitle?: string;
   className?: string;
+  fullValue?: string;
 }
 
 const variantStyles: Record<StatCardProps['variant'], string> = {
@@ -28,7 +35,11 @@ const iconBgStyles: Record<StatCardProps['variant'], string> = {
   cumulative: 'bg-profit/20',
 };
 
-export function StatCard({ title, value, icon: Icon, variant, subtitle, className }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, variant, subtitle, className, fullValue }: StatCardProps) {
+  const valueContent = (
+    <p className="mt-1 break-all font-mono text-lg font-bold leading-tight sm:text-xl">{value}</p>
+  );
+
   return (
     <div
       className={cn(
@@ -40,7 +51,20 @@ export function StatCard({ title, value, icon: Icon, variant, subtitle, classNam
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium uppercase tracking-wider opacity-70">{title}</p>
-          <p className="mt-1 truncate font-mono text-xl font-bold leading-tight sm:text-2xl">{value}</p>
+          {fullValue ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {valueContent}
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="font-mono text-sm">{fullValue}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            valueContent
+          )}
           {subtitle && <p className="mt-0.5 text-xs opacity-60">{subtitle}</p>}
         </div>
         <div className={cn('flex-shrink-0 rounded-lg p-2', iconBgStyles[variant])}>

@@ -52,13 +52,40 @@ export default function ReportsPage() {
   const selectedYear = academicYears.find((y) => y.id === selectedYearId);
   const breakdown = useMemo(() => getYearProfitBreakdown(selectedYearId), [selectedYearId, getYearProfitBreakdown, incomeEntries, expenseEntries]);
 
-  const categoryBreakdown = useMemo(() => {
+  const schoolCategoryBreakdown = useMemo(() => {
     const map = new Map<string, number>();
     expenseEntries
       .filter((e) => e.academicYearId === selectedYearId && e.expenseType === 'school')
       .forEach((e) => map.set(e.category, (map.get(e.category) || 0) + e.amount));
     return Array.from(map.entries())
       .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [expenseEntries, selectedYearId]);
+
+  const homeCategoryBreakdown = useMemo(() => {
+    const map = new Map<string, number>();
+    expenseEntries
+      .filter((e) => e.academicYearId === selectedYearId && e.expenseType === 'home')
+      .forEach((e) => map.set(e.category, (map.get(e.category) || 0) + e.amount));
+    return Array.from(map.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [expenseEntries, selectedYearId]);
+
+  // All categories combined for analytics
+  const allCategoryBreakdown = useMemo(() => {
+    const map = new Map<string, { value: number; type: string }>();
+    expenseEntries
+      .filter((e) => e.academicYearId === selectedYearId)
+      .forEach((e) => {
+        const existing = map.get(e.category);
+        map.set(e.category, {
+          value: (existing?.value || 0) + e.amount,
+          type: e.expenseType,
+        });
+      });
+    return Array.from(map.entries())
+      .map(([name, { value, type }]) => ({ name, value, type }))
       .sort((a, b) => b.value - a.value);
   }, [expenseEntries, selectedYearId]);
 
@@ -88,7 +115,7 @@ export default function ReportsPage() {
       ...monthExpenses.map((e) => ({ id: e.id, date: e.date, label: e.category, amount: e.amount, isIncome: false })),
     ].sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    return { income, school, home, net: income - school - home, categories, transactions };
+    return { income, school, home, schoolProfit: income - school, net: income - school - home, categories, transactions };
   }, [selectedMonth, incomeEntries, expenseEntries]);
 
   // All-time data
@@ -96,8 +123,20 @@ export default function ReportsPage() {
     let cumulative = 0;
     return academicYears.map((y) => {
       const b = getYearProfitBreakdown(y.id);
+      const homeExp = expenseEntries
+        .filter((e) => e.academicYearId === y.id && e.expenseType === 'home')
+        .reduce((s, e) => s + e.amount, 0);
       cumulative += b.netProfit;
-      return { year: y.label, income: b.totalIncome, expenses: b.fixedExpenses + b.extraExpenses, profit: b.netProfit, cumulative, status: y.status };
+      return {
+        year: y.label,
+        income: b.totalIncome,
+        schoolExpenses: b.fixedExpenses + b.extraExpenses,
+        homeExpenses: homeExp,
+        profit: b.netProfit,
+        overallPosition: b.netProfit - homeExp,
+        cumulative,
+        status: y.status,
+      };
     });
   }, [academicYears, getYearProfitBreakdown, incomeEntries, expenseEntries]);
 
@@ -119,7 +158,6 @@ export default function ReportsPage() {
       { label: 'Net Profit', v1: b1.netProfit, v2: b2.netProfit, pct: pctChange(b1.netProfit, b2.netProfit) },
     ];
 
-    // Category comparison
     const allCats = new Set<string>();
     [...b1.fixedBreakdown, ...b1.extraBreakdown, ...b2.fixedBreakdown, ...b2.extraBreakdown].forEach((c) => allCats.add(c.category));
     const catComparison = Array.from(allCats).map((cat) => {
@@ -137,7 +175,6 @@ export default function ReportsPage() {
     const school = yearExpenses.filter((e) => e.expenseType === 'school').reduce((s, e) => s + e.amount, 0);
     const home = yearExpenses.filter((e) => e.expenseType === 'home').reduce((s, e) => s + e.amount, 0);
 
-    // Monthly trend
     const monthlyMap = new Map<number, number>();
     yearExpenses.filter((e) => e.expenseType === 'school').forEach((e) => {
       const m = e.date.getMonth();
@@ -153,6 +190,13 @@ export default function ReportsPage() {
     const average = monthlyAmounts.length > 0 ? monthlyAmounts.reduce((s, v) => s + v, 0) / monthlyAmounts.length : 0;
 
     return { school, home, total: school + home, monthlyTrend, highest, lowest, average };
+  }, [expenseEntries, selectedYearId]);
+
+  // Home expenses for P&L
+  const homeExpensesTotal = useMemo(() => {
+    return expenseEntries
+      .filter((e) => e.academicYearId === selectedYearId && e.expenseType === 'home')
+      .reduce((s, e) => s + e.amount, 0);
   }, [expenseEntries, selectedYearId]);
 
   const handleExportCSV = useCallback(() => {
@@ -198,7 +242,9 @@ export default function ReportsPage() {
           ['Fixed Expenses', formatINR(breakdown.fixedExpenses)],
           ['Gross Profit', formatINR(breakdown.grossProfit)],
           ['Extra Expenses', formatINR(breakdown.extraExpenses)],
-          ['Net Profit', formatINR(breakdown.netProfit)],
+          ['Net Profit (School)', formatINR(breakdown.netProfit)],
+          ['Home Expenses', formatINR(homeExpensesTotal)],
+          ['Overall Position', formatINR(breakdown.netProfit - homeExpensesTotal)],
         ],
       });
 
@@ -207,7 +253,7 @@ export default function ReportsPage() {
     } catch {
       toast({ title: 'Export failed', variant: 'destructive' });
     }
-  }, [breakdown, selectedYear]);
+  }, [breakdown, selectedYear, homeExpensesTotal]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -232,7 +278,7 @@ export default function ReportsPage() {
           <TabsTrigger value="expenses">Expense Analytics</TabsTrigger>
         </TabsList>
 
-        {/* Monthly Summary */}
+        {/* Monthly Summary — FIX 7 */}
         <TabsContent value="monthly" className="mt-4 space-y-4">
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium">Month:</label>
@@ -244,11 +290,12 @@ export default function ReportsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <MiniCard label="Income" value={formatINR(monthlySummary.income)} color="text-income" />
             <MiniCard label="School Expenses" value={formatINR(monthlySummary.school)} color="text-expense" />
             <MiniCard label="Home Expenses" value={formatINR(monthlySummary.home)} color="text-warning" />
-            <MiniCard label="Net Position" value={formatINR(monthlySummary.net)} color={monthlySummary.net >= 0 ? 'text-income' : 'text-expense'} />
+            <MiniCard label="School Profit" value={formatINR(monthlySummary.schoolProfit)} color={monthlySummary.schoolProfit >= 0 ? 'text-primary' : 'text-expense'} subtitle="Income − School" />
+            <MiniCard label="Overall Position" value={formatINR(monthlySummary.net)} color={monthlySummary.net >= 0 ? 'text-warning' : 'text-expense'} subtitle="After all expenses" />
           </div>
 
           {monthlySummary.categories.length > 0 && (
@@ -293,7 +340,7 @@ export default function ReportsPage() {
           )}
         </TabsContent>
 
-        {/* Yearly P&L */}
+        {/* Yearly P&L — FIX 3 + FIX 5 */}
         <TabsContent value="yearly" className="mt-4 space-y-4">
           <Select value={selectedYearId} onValueChange={setSelectedYearId}>
             <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
@@ -317,10 +364,16 @@ export default function ReportsPage() {
               {breakdown.extraBreakdown.map((e) => (
                 <PLRow key={e.category} label={e.category} value={e.amount} type="expense" indent />
               ))}
-              {breakdown.extraExpenses > 0 && (
-                <div className="border-t pt-2">
-                  <PLRow label="Net Profit" value={breakdown.netProfit} type={breakdown.netProfit >= 0 ? 'income' : 'expense'} bold />
-                </div>
+              <div className="border-t border-dashed pt-2">
+                <PLRow label="SCHOOL NET PROFIT" value={breakdown.netProfit} type={breakdown.netProfit >= 0 ? 'income' : 'expense'} bold />
+              </div>
+              {homeExpensesTotal > 0 && (
+                <>
+                  <PLRow label="Personal/Home Expenses" value={homeExpensesTotal} type="expense" indent />
+                  <div className="border-t pt-2">
+                    <PLRow label="OVERALL POSITION" value={breakdown.netProfit - homeExpensesTotal} type={breakdown.netProfit - homeExpensesTotal >= 0 ? 'income' : 'expense'} bold />
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -359,38 +412,73 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {/* Category Pie */}
-          {categoryBreakdown.length > 0 && (
-            <div className="rounded-lg border bg-card p-5">
-              <h3 className="mb-3 text-sm font-semibold">Expense Breakdown</h3>
-              <div className="flex flex-col items-center gap-4 sm:flex-row">
-                <div className="h-52 w-52">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={categoryBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} innerRadius={40}>
-                        {categoryBreakdown.map((_, i) => (<Cell key={i} fill={COLORS[i % COLORS.length]} />))}
-                      </Pie>
-                      <Tooltip formatter={(v: number) => formatINR(v)} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex-1 space-y-2">
-                  {categoryBreakdown.map((c, i) => (
-                    <div key={c.name} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                        <span className="text-muted-foreground">{c.name}</span>
+          {/* FIX 5: Two pie charts — School + Home */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {schoolCategoryBreakdown.length > 0 && (
+              <div className="rounded-lg border bg-card p-5">
+                <h3 className="mb-3 text-sm font-semibold">🏫 School Expenses</h3>
+                <div className="flex flex-col items-center gap-4 sm:flex-row">
+                  <div className="h-48 w-48 flex-shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={schoolCategoryBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={35}>
+                          {schoolCategoryBreakdown.map((_, i) => (<Cell key={i} fill={COLORS[i % COLORS.length]} />))}
+                        </Pie>
+                        <Tooltip formatter={(v: number) => formatINR(v)} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex-1 space-y-1.5">
+                    {schoolCategoryBreakdown.map((c, i) => (
+                      <div key={c.name} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2.5 w-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                          <span className="text-muted-foreground">{c.name}</span>
+                        </div>
+                        <span className="font-mono font-medium">{formatINR(c.value)}</span>
                       </div>
-                      <span className="font-mono font-medium">{formatINR(c.value)}</span>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+
+            {homeCategoryBreakdown.length > 0 ? (
+              <div className="rounded-lg border bg-card p-5">
+                <h3 className="mb-3 text-sm font-semibold">🏠 Home Expenses</h3>
+                <div className="flex flex-col items-center gap-4 sm:flex-row">
+                  <div className="h-48 w-48 flex-shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={homeCategoryBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={35}>
+                          {homeCategoryBreakdown.map((_, i) => (<Cell key={i} fill={COLORS[(i + 3) % COLORS.length]} />))}
+                        </Pie>
+                        <Tooltip formatter={(v: number) => formatINR(v)} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex-1 space-y-1.5">
+                    {homeCategoryBreakdown.map((c, i) => (
+                      <div key={c.name} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2.5 w-2.5 rounded-full" style={{ background: COLORS[(i + 3) % COLORS.length] }} />
+                          <span className="text-muted-foreground">{c.name}</span>
+                        </div>
+                        <span className="font-mono font-medium">{formatINR(c.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center rounded-lg border border-dashed bg-card p-5 text-sm text-muted-foreground">
+                No home expenses recorded.
+              </div>
+            )}
+          </div>
         </TabsContent>
 
-        {/* All-Time */}
+        {/* All-Time — FIX 3 */}
         <TabsContent value="alltime" className="mt-4 space-y-4">
           <div className="overflow-auto rounded-lg border bg-card">
             <table className="w-full text-sm">
@@ -398,8 +486,10 @@ export default function ReportsPage() {
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="p-3">Year</th>
                   <th className="p-3 text-right">Income</th>
-                  <th className="p-3 text-right">Expenses</th>
-                  <th className="p-3 text-right">Net Profit</th>
+                  <th className="p-3 text-right">School Exp.</th>
+                  <th className="p-3 text-right">Home Exp.</th>
+                  <th className="p-3 text-right">School Profit</th>
+                  <th className="p-3 text-right">Overall</th>
                   <th className="p-3 text-right">Cumulative</th>
                   <th className="p-3 text-right">Status</th>
                 </tr>
@@ -408,10 +498,12 @@ export default function ReportsPage() {
                 {allYearsData.map((y) => (
                   <tr key={y.year} className="border-b last:border-0">
                     <td className="p-3 font-medium">AY {y.year}</td>
-                    <td className="p-3 text-right font-mono text-income">{formatINR(y.income)}</td>
-                    <td className="p-3 text-right font-mono text-expense">{formatINR(y.expenses)}</td>
-                    <td className={`p-3 text-right font-mono font-bold ${y.profit >= 0 ? 'text-income' : 'text-expense'}`}>{formatINR(y.profit)}</td>
-                    <td className={`p-3 text-right font-mono ${y.cumulative >= 0 ? 'text-income' : 'text-expense'}`}>{formatINR(y.cumulative)}</td>
+                    <td className="p-3 text-right font-mono text-income">{formatINRAbbr(y.income)}</td>
+                    <td className="p-3 text-right font-mono text-expense">{formatINRAbbr(y.schoolExpenses)}</td>
+                    <td className="p-3 text-right font-mono text-warning">{formatINRAbbr(y.homeExpenses)}</td>
+                    <td className={`p-3 text-right font-mono font-bold ${y.profit >= 0 ? 'text-income' : 'text-expense'}`}>{formatINRAbbr(y.profit)}</td>
+                    <td className={`p-3 text-right font-mono ${y.overallPosition >= 0 ? 'text-income' : 'text-expense'}`}>{formatINRAbbr(y.overallPosition)}</td>
+                    <td className={`p-3 text-right font-mono ${y.cumulative >= 0 ? 'text-income' : 'text-expense'}`}>{formatINRAbbr(y.cumulative)}</td>
                     <td className="p-3 text-right">
                       <span className={`rounded px-2 py-0.5 text-[10px] font-bold capitalize ${
                         y.status === 'active' ? 'bg-income/10 text-income' :
@@ -426,7 +518,7 @@ export default function ReportsPage() {
           </div>
 
           <div className="rounded-lg border bg-card p-4 text-center">
-            <p className="text-sm text-muted-foreground">All-Time Cumulative Profit</p>
+            <p className="text-sm text-muted-foreground">All-Time Cumulative School Profit</p>
             <p className={`font-mono text-2xl font-bold ${getAllTimeCumulativeProfit() >= 0 ? 'text-income' : 'text-expense'}`}>
               {formatINR(getAllTimeCumulativeProfit())}
             </p>
@@ -441,7 +533,7 @@ export default function ReportsPage() {
                     <XAxis dataKey="year" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => formatINRAbbr(v)} />
                     <Tooltip formatter={(v: number) => formatINR(v)} />
-                    <Line type="monotone" dataKey="profit" stroke="hsl(210, 52%, 25%)" strokeWidth={2} dot={{ r: 4 }} name="Net Profit" />
+                    <Line type="monotone" dataKey="profit" stroke="hsl(210, 52%, 25%)" strokeWidth={2} dot={{ r: 4 }} name="School Profit" />
                     <Line type="monotone" dataKey="cumulative" stroke="hsl(160, 84%, 39%)" strokeWidth={2} dot={{ r: 4 }} name="Cumulative" />
                   </LineChart>
                 </ResponsiveContainer>
@@ -482,11 +574,11 @@ export default function ReportsPage() {
                     <div className="mt-1 flex items-end gap-3">
                       <div>
                         <p className="text-[10px] text-muted-foreground">AY {comparison.y1Label}</p>
-                        <p className="font-mono text-sm font-bold">{formatINR(item.v1)}</p>
+                        <p className="font-mono text-sm font-bold">{formatINRAbbr(item.v1)}</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-muted-foreground">AY {comparison.y2Label}</p>
-                        <p className="font-mono text-sm font-medium">{formatINR(item.v2)}</p>
+                        <p className="font-mono text-sm font-medium">{formatINRAbbr(item.v2)}</p>
                       </div>
                       <span className={`ml-auto text-sm font-bold ${item.pct > 0 ? 'text-expense' : item.pct < 0 ? 'text-income' : 'text-muted-foreground'}`}>
                         {item.pct > 0 ? '↑' : item.pct < 0 ? '↓' : '—'}{Math.abs(item.pct)}%
@@ -532,7 +624,7 @@ export default function ReportsPage() {
           )}
         </TabsContent>
 
-        {/* Expense Analytics */}
+        {/* Expense Analytics — FIX 5 */}
         <TabsContent value="expenses" className="mt-4 space-y-4">
           <Select value={selectedYearId} onValueChange={setSelectedYearId}>
             <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
@@ -584,22 +676,22 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {/* Top categories bar chart */}
-          {categoryBreakdown.length > 0 && (
+          {/* Top categories — ALL categories with type label */}
+          {allCategoryBreakdown.length > 0 && (
             <div className="rounded-lg border bg-card p-5">
-              <h3 className="mb-3 text-sm font-semibold">Top Expense Categories</h3>
+              <h3 className="mb-3 text-sm font-semibold">Top Expense Categories (All)</h3>
               <div className="space-y-3">
-                {categoryBreakdown.map((c, i) => {
-                  const max = categoryBreakdown[0]?.value || 1;
+                {allCategoryBreakdown.map((c, i) => {
+                  const max = allCategoryBreakdown[0]?.value || 1;
                   const pct = Math.round((c.value / max) * 100);
                   return (
                     <div key={c.name}>
                       <div className="mb-1 flex items-center justify-between text-sm">
-                        <span>{i + 1}. {c.name}</span>
+                        <span>{i + 1}. {c.type === 'school' ? '🏫' : '🏠'} {c.name}</span>
                         <span className="font-mono font-medium">{formatINR(c.value)}</span>
                       </div>
                       <div className="h-2 rounded-full bg-muted">
-                        <div className="h-2 rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                        <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, background: c.type === 'school' ? 'hsl(210, 52%, 25%)' : 'hsl(38, 92%, 50%)' }} />
                       </div>
                     </div>
                   );
@@ -630,11 +722,12 @@ export default function ReportsPage() {
   );
 }
 
-function MiniCard({ label, value, color }: { label: string; value: string; color: string }) {
+function MiniCard({ label, value, color, subtitle }: { label: string; value: string; color: string; subtitle?: string }) {
   return (
     <div className="rounded-lg border bg-card p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`mt-1 font-mono text-lg font-bold ${color}`}>{value}</p>
+      <p className={`mt-1 break-all font-mono text-lg font-bold ${color}`}>{value}</p>
+      {subtitle && <p className="text-[10px] text-muted-foreground">{subtitle}</p>}
     </div>
   );
 }

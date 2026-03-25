@@ -1,20 +1,29 @@
 import { useState, useMemo } from 'react';
-import { Plus, TrendingUp, UtensilsCrossed, Clock, IndianRupee } from 'lucide-react';
+import { Plus, TrendingUp, UtensilsCrossed, Clock, IndianRupee, Pencil, Loader2 } from 'lucide-react';
 import { useFinanceStore } from '@/store/finance-store';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { StatCard } from '@/components/StatCard';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { AddIncomeModal } from '@/components/AddIncomeModal';
+import { toast } from '@/hooks/use-toast';
+import * as academicYearsService from '@/services/academicYears';
 import type { IncomeEntry } from '@/types/finance';
 
 export default function IncomePage() {
-  const { incomeEntries, academicYears, currentYearId } = useFinanceStore();
+  const { incomeEntries, academicYears, currentYearId, refreshAcademicYears } = useFinanceStore();
   const [tab, setTab] = useState('tuition');
   const [showModal, setShowModal] = useState(false);
   const [editEntry, setEditEntry] = useState<IncomeEntry | undefined>();
   const [lateYearId, setLateYearId] = useState<string | undefined>();
+
+  // Edit target state
+  const [showTargetModal, setShowTargetModal] = useState(false);
+  const [targetValue, setTargetValue] = useState('');
+  const [targetSaving, setTargetSaving] = useState(false);
 
   const currentYear = academicYears.find((y) => y.id === currentYearId);
 
@@ -30,7 +39,6 @@ export default function IncomePage() {
 
   const pendingYears = useMemo(() => {
     return academicYears
-      .filter((y) => y.status === 'pending_collections' || true) // check all years
       .map((y) => {
         const collected = incomeEntries
           .filter((i) => i.academicYearId === y.id && i.type === 'tuition')
@@ -67,6 +75,29 @@ export default function IncomePage() {
     setShowModal(true);
   }
 
+  function openEditTarget() {
+    setTargetValue((currentYear?.targetTuitionFees || 0).toString());
+    setShowTargetModal(true);
+  }
+
+  async function saveTarget() {
+    if (!currentYearId) return;
+    setTargetSaving(true);
+    try {
+      await academicYearsService.update(currentYearId, {
+        target_tuition_fees: parseFloat(targetValue) || 0,
+      });
+      await refreshAcademicYears();
+      toast({ title: '✅ Target updated' });
+      setShowTargetModal(false);
+    } catch {
+      toast({ title: 'Failed to update target', variant: 'destructive' });
+    }
+    setTargetSaving(false);
+  }
+
+  const feeProgress = stats.target > 0 ? Math.round((stats.tuitionCollected || stats.tuitionTotal) / stats.target * 100) : 0;
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -81,10 +112,35 @@ export default function IncomePage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard title="Tuition Collected" value={formatINRAbbr(stats.tuitionTotal)} icon={IndianRupee} variant="income" />
-        <StatCard title="Lunch Collected" value={formatINRAbbr(stats.lunchTotal)} icon={UtensilsCrossed} variant="income" />
-        <StatCard title="Target" value={formatINRAbbr(stats.target)} icon={TrendingUp} variant="balance" />
-        <StatCard title="Remaining" value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionTotal))} icon={Clock} variant="pending" />
+        <StatCard title="Tuition Collected" value={formatINRAbbr(stats.tuitionTotal)} fullValue={formatINR(stats.tuitionTotal)} icon={IndianRupee} variant="income" />
+        <StatCard title="Lunch Collected" value={formatINRAbbr(stats.lunchTotal)} fullValue={formatINR(stats.lunchTotal)} icon={UtensilsCrossed} variant="income" />
+        <StatCard title="Target" value={formatINRAbbr(stats.target)} fullValue={formatINR(stats.target)} icon={TrendingUp} variant="balance" />
+        <StatCard title="Remaining" value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionTotal))} fullValue={formatINR(Math.max(0, stats.target - stats.tuitionTotal))} icon={Clock} variant="pending" />
+      </div>
+
+      {/* Fee progress bar with edit target button */}
+      <div className="rounded-lg border bg-card p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-sm font-medium">Tuition Fee Collection Progress</span>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm font-bold text-primary">
+              {formatINR(stats.tuitionTotal)} / {formatINR(stats.target)}
+            </span>
+            <button
+              onClick={openEditTarget}
+              className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title="Edit target"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="h-2 rounded-full bg-muted">
+          <div className="h-2 rounded-full bg-income transition-all" style={{ width: `${Math.min(100, feeProgress)}%` }} />
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {feeProgress}% collected • {formatINR(Math.max(0, stats.target - stats.tuitionTotal))} remaining
+        </p>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -150,6 +206,33 @@ export default function IncomePage() {
       </Tabs>
 
       <AddIncomeModal isOpen={showModal} onClose={() => setShowModal(false)} editEntry={editEntry} />
+
+      {/* Edit Target Modal */}
+      <Dialog open={showTargetModal} onOpenChange={setShowTargetModal}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit Tuition Fee Target</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">AY {currentYear?.label}</p>
+          <Input
+            type="number"
+            placeholder="Target tuition fees (₹)"
+            value={targetValue}
+            onChange={(e) => setTargetValue(e.target.value)}
+          />
+          {targetValue && (
+            <p className="text-xs text-muted-foreground">
+              {formatINR(parseFloat(targetValue) || 0)}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowTargetModal(false)} className="flex-1">Cancel</Button>
+            <Button onClick={saveTarget} disabled={targetSaving} className="flex-1">
+              {targetSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
