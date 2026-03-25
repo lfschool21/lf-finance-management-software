@@ -12,13 +12,14 @@ import {
   School,
   Home,
   AlertTriangle,
+  Info,
 } from 'lucide-react';
 import {
   BarChart,
   Bar,
   XAxis,
   YAxis,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -35,6 +36,17 @@ import { AddIncomeModal } from '@/components/AddIncomeModal';
 import { AddExpenseModal } from '@/components/AddExpenseModal';
 import { TransferModal } from '@/components/TransferModal';
 import { RecurringReviewModal } from '@/components/RecurringReviewModal';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 
 const CHART_COLORS = [
   'hsl(210, 52%, 25%)', 'hsl(160, 84%, 39%)', 'hsl(0, 84%, 60%)',
@@ -69,14 +81,6 @@ export default function Dashboard() {
     const target = currentYear?.targetTuitionFees || 0;
     const feeProgress = target > 0 ? Math.round((tuitionCollected / target) * 100) : 0;
 
-    const totalPending = academicYears.reduce((s, y) => {
-      const collected = incomeEntries
-        .filter((i) => i.academicYearId === y.id && i.type === 'tuition')
-        .reduce((sum, i) => sum + i.amount, 0);
-      const remaining = Math.max(0, y.targetTuitionFees - collected);
-      return s + remaining;
-    }, 0) - Math.max(0, target - tuitionCollected); // exclude current year from "pending from previous"
-
     const prevPending = academicYears
       .filter((y) => y.id !== currentYearId)
       .reduce((s, y) => {
@@ -88,6 +92,37 @@ export default function Dashboard() {
 
     const totalBalance = getTotalBalance();
 
+    // Home expenses for the year
+    const homeExpenses = expenseEntries
+      .filter((e) => e.academicYearId === currentYearId && e.expenseType === 'home')
+      .reduce((s, e) => s + e.amount, 0);
+
+    // Projected breakdown values
+    const year = currentYear;
+    let projectedIncome = breakdown.totalIncome;
+    let projectedExpenses = breakdown.fixedExpenses + breakdown.extraExpenses;
+    if (year) {
+      const today = new Date();
+      const monthsElapsed = Math.max(1,
+        (today.getFullYear() - year.startDate.getFullYear()) * 12 +
+        (today.getMonth() - year.startDate.getMonth()) + 1
+      );
+      const totalMonths = Math.max(1,
+        (year.endDate.getFullYear() - year.startDate.getFullYear()) * 12 +
+        (year.endDate.getMonth() - year.startDate.getMonth()) + 1
+      );
+      const remainingMonths = Math.max(0, totalMonths - monthsElapsed);
+      const currentSchoolExpenses = breakdown.fixedExpenses + breakdown.extraExpenses;
+      const avgMonthlyExpense = currentSchoolExpenses / monthsElapsed;
+      projectedExpenses = currentSchoolExpenses + (avgMonthlyExpense * remainingMonths);
+      const uncollected = Math.max(0, (year.targetTuitionFees || 0) -
+        incomeEntries
+          .filter((i) => i.academicYearId === currentYearId && i.type === 'tuition')
+          .reduce((sum, i) => sum + i.amount, 0)
+      );
+      projectedIncome = breakdown.totalIncome + uncollected;
+    }
+
     return {
       ...breakdown,
       projected,
@@ -96,6 +131,9 @@ export default function Dashboard() {
       feeProgress,
       prevPending,
       totalBalance,
+      homeExpenses,
+      projectedIncome,
+      projectedExpenses,
     };
   }, [incomeEntries, expenseEntries, accounts, academicYears, currentYearId, currentYear, transfers, getTotalBalance, getYearProfitBreakdown, getProjectedProfit]);
 
@@ -131,6 +169,9 @@ export default function Dashboard() {
     return all.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 10);
   }, [incomeEntries, expenseEntries]);
 
+  const schoolExpensesTotal = stats.fixedExpenses + stats.extraExpenses;
+  const overallPosition = stats.netProfit - stats.homeExpenses;
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -164,13 +205,65 @@ export default function Dashboard() {
       )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
-        <StatCard title="Total Income" value={formatINRAbbr(stats.totalIncome)} icon={IndianRupee} variant="income" subtitle="Tuition + Lunch" />
-        <StatCard title="School Expenses" value={formatINRAbbr(stats.fixedExpenses + stats.extraExpenses)} icon={TrendingDown} variant="expense" />
-        <StatCard title="Net Profit" value={formatINRAbbr(stats.netProfit)} icon={BarChart3} variant={stats.netProfit >= 0 ? 'profit' : 'expense'} subtitle="School only" />
-        <StatCard title="All Balances" value={formatINRAbbr(stats.totalBalance)} icon={Landmark} variant="balance" />
-        <StatCard title="Pending Fees" value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionCollected))} icon={Clock} variant="pending" subtitle="This year" />
-        <StatCard title="Gross Profit" value={formatINRAbbr(stats.grossProfit)} icon={TrendingUp} variant="cumulative" subtitle="Income - Fixed" />
-        <StatCard title="Projected Profit" value={formatINRAbbr(stats.projected)} icon={TrendingUp} variant="profit" subtitle="By year end" />
+        <StatCard title="Total Income" value={formatINRAbbr(stats.totalIncome)} fullValue={formatINR(stats.totalIncome)} icon={IndianRupee} variant="income" subtitle="Tuition + Lunch" />
+        <StatCard title="School Expenses" value={formatINRAbbr(schoolExpensesTotal)} fullValue={formatINR(schoolExpensesTotal)} icon={TrendingDown} variant="expense" />
+        <StatCard title="Net Profit" value={formatINRAbbr(stats.netProfit)} fullValue={formatINR(stats.netProfit)} icon={BarChart3} variant={stats.netProfit >= 0 ? 'profit' : 'expense'} subtitle="School income − expenses" />
+        <StatCard title="All Balances" value={formatINRAbbr(stats.totalBalance)} fullValue={formatINR(stats.totalBalance)} icon={Landmark} variant="balance" />
+        <StatCard title="Pending Fees" value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionCollected))} fullValue={formatINR(Math.max(0, stats.target - stats.tuitionCollected))} icon={Clock} variant="pending" subtitle="This year" />
+        <StatCard title="Gross Profit" value={formatINRAbbr(stats.grossProfit)} fullValue={formatINR(stats.grossProfit)} icon={TrendingUp} variant="cumulative" subtitle="Income − Fixed" />
+        <div className="relative">
+          <StatCard title="Projected Profit" value={formatINRAbbr(stats.projected)} fullValue={formatINR(stats.projected)} icon={TrendingUp} variant="profit" subtitle="By year end" />
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="absolute right-2 top-2 rounded-full p-1 opacity-60 hover:opacity-100 transition-opacity">
+                <Info className="h-3.5 w-3.5" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 text-xs" side="bottom" align="end">
+              <p className="mb-2 font-semibold">Projected Profit Calculation</p>
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Expected Income:</span>
+                  <span className="font-mono">{formatINR(stats.projectedIncome)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Projected Expenses:</span>
+                  <span className="font-mono">{formatINR(Math.round(stats.projectedExpenses))}</span>
+                </div>
+                <div className="border-t pt-1 flex justify-between font-semibold">
+                  <span>Projected Profit:</span>
+                  <span className="font-mono">{formatINR(stats.projected)}</span>
+                </div>
+              </div>
+              <p className="mt-2 text-muted-foreground">Assumes spending continues at the current monthly rate.</p>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
+
+      {/* FIX 4: Financial Overview card */}
+      <div className="rounded-lg border bg-card p-4">
+        <h3 className="mb-3 text-sm font-semibold">💰 Financial Overview</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-lg bg-secondary/50 p-3">
+            <p className="text-xs text-muted-foreground">School Profit</p>
+            <p className={cn('font-mono text-xl font-bold', stats.netProfit >= 0 ? 'text-income' : 'text-expense')}>
+              {formatINR(stats.netProfit)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Income {formatINR(stats.totalIncome)} − School Expenses {formatINR(schoolExpensesTotal)}
+            </p>
+          </div>
+          <div className="rounded-lg bg-secondary/50 p-3">
+            <p className="text-xs text-muted-foreground">After Personal Expenses</p>
+            <p className={cn('font-mono text-xl font-bold', overallPosition >= 0 ? 'text-income' : 'text-expense')}>
+              {formatINR(overallPosition)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              School Profit {formatINR(stats.netProfit)} − Home {formatINR(stats.homeExpenses)}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="rounded-lg border bg-card p-4">
@@ -214,7 +307,7 @@ export default function Dashboard() {
                 <BarChart data={monthlyData} barGap={4}>
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => formatINRAbbr(v)} />
-                  <Tooltip formatter={(value: number) => formatINR(value)} contentStyle={{ borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', fontSize: '12px' }} />
+                  <RechartsTooltip formatter={(value: number) => formatINR(value)} contentStyle={{ borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', fontSize: '12px' }} />
                   <Bar dataKey="income" fill="hsl(160, 84%, 39%)" radius={[4, 4, 0, 0]} name="Income" />
                   <Bar dataKey="expenses" fill="hsl(0, 84%, 60%)" radius={[4, 4, 0, 0]} name="Expenses" />
                 </BarChart>
@@ -235,7 +328,7 @@ export default function Dashboard() {
                     <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={35} strokeWidth={2}>
                       {categoryData.map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
                     </Pie>
-                    <Tooltip formatter={(value: number) => formatINR(value)} />
+                    <RechartsTooltip formatter={(value: number) => formatINR(value)} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
