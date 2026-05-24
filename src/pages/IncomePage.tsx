@@ -14,7 +14,7 @@ import * as academicYearsService from '@/services/academicYears';
 import type { IncomeEntry } from '@/types/finance';
 
 export default function IncomePage() {
-  const { incomeEntries, academicYears, currentYearId, refreshAcademicYears } = useFinanceStore();
+  const { incomeEntries, academicYears, currentYearId, refreshAcademicYears, getPendingForYear } = useFinanceStore();
   const [tab, setTab] = useState('tuition');
   const [showModal, setShowModal] = useState(false);
   const [editEntry, setEditEntry] = useState<IncomeEntry | undefined>();
@@ -49,27 +49,21 @@ export default function IncomePage() {
   const pendingYears = useMemo(() => {
     return academicYears
       .map((y) => {
-        // Count both direct entries for this year AND late-collection payments attributed to it
-        const collected = incomeEntries
-          .filter(
-            (i) =>
-              i.type === 'tuition' &&
-              (
-                (i.academicYearId === y.id && !i.isLateCollection) ||
-                (i.isLateCollection && i.originalYearId === y.id)
-              )
-          )
-          .reduce((s, i) => s + i.amount, 0);
-        const remainingFromTarget = Math.max(0, y.targetTuitionFees - collected);
-        const carryForward = y.carryForwardFees || 0;
-        const totalTarget = y.targetTuitionFees + carryForward;
-        const totalRemaining = remainingFromTarget + carryForward;
+        const info = getPendingForYear(y.id);
         const startYear = y.startDate.getFullYear();
         const yearsOverdue = new Date().getFullYear() - startYear - 1;
-        return { ...y, collected, remainingFromTarget, carryForward, totalTarget, totalRemaining, yearsOverdue };
+        return {
+          ...y,
+          collected: info.collected,
+          remainingFromTarget: info.targetGap,
+          carryForward: info.carryForward,
+          totalTarget: info.totalOwed,
+          totalRemaining: info.remaining,
+          yearsOverdue,
+        };
       })
       .filter((y) => y.totalRemaining > 0);
-  }, [academicYears, incomeEntries]);
+  }, [academicYears, incomeEntries, getPendingForYear]);
 
   const filteredEntries = useMemo(() => {
     const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
