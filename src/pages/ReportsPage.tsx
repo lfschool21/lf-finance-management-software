@@ -137,8 +137,6 @@ export default function ReportsPage() {
         overallPosition: b.netProfit - homeExp,
         cumulative,
         status: y.status,
-        pendingCollected: pending.collected,
-        pendingTarget: y.targetTuitionFees,
         pendingRemaining: pending.remaining,
         carryForward: pending.carryForward,
       };
@@ -386,7 +384,9 @@ export default function ReportsPage() {
           {/* Fee status */}
           {selectedYear && (() => {
             const pending = getPendingForYear(selectedYearId);
-            const pct = pending.totalOwed > 0 ? Math.round((pending.collected / pending.totalOwed) * 100) : 0;
+            const pct = pending.totalOwed > 0
+              ? Math.min(100, Math.round((pending.collected / pending.totalOwed) * 100))
+              : 0;
             return (
               <div className="rounded-lg border bg-card p-4">
                 <h3 className="mb-2 text-sm font-semibold">Fee Collection Status</h3>
@@ -401,13 +401,13 @@ export default function ReportsPage() {
                   </div>
                   {pending.carryForward > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Carry-Forward (prev year)</span>
+                      <span className="text-muted-foreground">Carry-forward (prev year)</span>
                       <span className="font-mono font-medium text-warning">{formatINR(pending.carryForward)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-sm font-semibold">
                     <span className="text-muted-foreground">Total Pending</span>
-                    <span className="font-mono font-medium text-warning">{formatINR(pending.remaining)}</span>
+                    <span className="font-mono text-warning">{formatINR(pending.remaining)}</span>
                   </div>
                   <div className="h-2 rounded-full bg-muted">
                     <div className="h-2 rounded-full bg-income transition-all" style={{ width: `${Math.min(100, pct)}%` }} />
