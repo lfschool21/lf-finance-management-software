@@ -51,9 +51,17 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
   const pendingYears = useMemo(() => {
     return academicYears.filter((y) => {
       const collected = incomeEntries
-        .filter((i) => i.academicYearId === y.id && i.type === 'tuition')
+        .filter(
+          (i) =>
+            i.type === 'tuition' &&
+            (
+              (i.academicYearId === y.id && !i.isLateCollection) ||
+              (i.isLateCollection && i.originalYearId === y.id)
+            )
+        )
         .reduce((s, i) => s + i.amount, 0);
-      return collected < y.targetTuitionFees;
+      const totalOwed = y.targetTuitionFees + (y.carryForwardFees || 0);
+      return collected < totalOwed;
     });
   }, [academicYears, incomeEntries]);
 
