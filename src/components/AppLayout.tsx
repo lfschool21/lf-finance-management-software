@@ -10,6 +10,7 @@ import {
   Search,
   ArrowLeftRight,
   GraduationCap,
+  Landmark,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { path: '/income', label: 'Income', icon: TrendingUp },
   { path: '/expenses', label: 'Expenses', icon: TrendingDown },
   { path: '/transfers', label: 'Transfers', icon: ArrowLeftRight },
+  { path: '/balances', label: 'Balances', icon: Landmark },
   { path: '/reports', label: 'Reports', icon: BarChart3 },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -25,6 +27,7 @@ const BOTTOM_NAV = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/income', label: 'Income', icon: TrendingUp },
   { path: '/expenses', label: 'Expenses', icon: TrendingDown },
+  { path: '/balances', label: 'Balances', icon: Landmark },
   { path: '/reports', label: 'Reports', icon: BarChart3 },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -33,7 +36,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
 
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="mobile-safe flex min-h-screen w-full">
       {/* Desktop Sidebar */}
       <aside className="hidden w-64 flex-shrink-0 border-r border-sidebar-border bg-sidebar md:flex md:flex-col">
         <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
@@ -79,7 +82,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col pb-16 md:pb-0">
+      <div className="mobile-safe flex flex-1 flex-col pb-16 md:pb-0">
         {/* Mobile header */}
         <header className="flex h-14 items-center justify-between border-b bg-card px-4 md:hidden">
           <div className="flex items-center gap-2">
@@ -105,13 +108,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </Link>
         </header>
 
-        <main className="flex-1 overflow-auto">
-          <div className="mx-auto max-w-7xl p-4 md:p-6">{children}</div>
+        <main className="mobile-safe flex-1 overflow-auto">
+          <div className="mobile-safe mx-auto max-w-7xl p-3 min-[380px]:p-4 md:p-6">{children}</div>
         </main>
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t bg-card md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-6 border-t bg-card md:hidden">
         {BOTTOM_NAV.map((item) => {
           const isActive = pathname === item.path;
           return (
@@ -119,12 +122,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
               key={item.path}
               to={item.path}
               className={cn(
-                'flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors',
+                'flex min-w-0 flex-col items-center gap-0.5 px-0.5 py-2 text-[9px] font-medium transition-colors min-[380px]:text-[10px]',
                 isActive ? 'text-primary' : 'text-muted-foreground'
               )}
             >
               <item.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
-              {item.label}
+              <span className="max-w-full truncate">{item.label}</span>
             </Link>
           );
         })}

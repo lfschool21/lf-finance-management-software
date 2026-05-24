@@ -260,9 +260,9 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold">Reports & Analytics</h1>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex">
           <Button size="sm" variant="outline" onClick={handleExportPDF} className="gap-1.5">
             <FileText className="h-3.5 w-3.5" /> PDF
           </Button>
@@ -273,7 +273,7 @@ export default function ReportsPage() {
       </div>
 
       <Tabs defaultValue="monthly">
-        <TabsList className="flex-wrap">
+        <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="monthly">Monthly</TabsTrigger>
           <TabsTrigger value="yearly">Yearly P&L</TabsTrigger>
           <TabsTrigger value="alltime">All-Time</TabsTrigger>
@@ -283,7 +283,7 @@ export default function ReportsPage() {
 
         {/* Monthly Summary — FIX 7 */}
         <TabsContent value="monthly" className="mt-4 space-y-4">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-1 min-[360px]:flex-row min-[360px]:items-center">
             <label className="text-sm font-medium">Month:</label>
             <input
               type="month"
@@ -293,7 +293,7 @@ export default function ReportsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-5">
             <MiniCard label="Income" value={formatINR(monthlySummary.income)} color="text-income" />
             <MiniCard label="School Expenses" value={formatINR(monthlySummary.school)} color="text-expense" />
             <MiniCard label="Home Expenses" value={formatINR(monthlySummary.home)} color="text-warning" />
@@ -306,9 +306,9 @@ export default function ReportsPage() {
               <h3 className="mb-3 text-sm font-semibold">Category Breakdown</h3>
               <div className="space-y-2">
                 {monthlySummary.categories.map((c) => (
-                  <div key={c.category} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{c.category}</span>
-                    <span className="font-mono font-medium">{formatINR(c.amount)}</span>
+                  <div key={c.category} className="flex flex-col gap-1 text-sm min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+                    <span className="text-fit text-muted-foreground">{c.category}</span>
+                    <span className="money-fit font-mono font-medium">{formatINR(c.amount)}</span>
                   </div>
                 ))}
               </div>
@@ -320,14 +320,14 @@ export default function ReportsPage() {
               <h3 className="border-b px-4 py-3 text-sm font-semibold">Transactions</h3>
               <div className="divide-y">
                 {monthlySummary.transactions.slice(0, 20).map((tx) => (
-                  <div key={tx.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                    <div>
-                      <span className="font-medium">{tx.label}</span>
+                  <div key={tx.id} className="flex min-w-0 items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                    <div className="min-w-0">
+                      <span className="text-fit font-medium">{tx.label}</span>
                       <span className="ml-2 text-xs text-muted-foreground">
                         {tx.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                       </span>
                     </div>
-                    <span className={`font-mono font-medium ${tx.isIncome ? 'text-income' : 'text-expense'}`}>
+                    <span className={`money-fit max-w-[42%] text-right font-mono font-medium ${tx.isIncome ? 'text-income' : 'text-expense'}`}>
                       {tx.isIncome ? '+' : '-'}{formatINR(tx.amount)}
                     </span>
                   </div>
@@ -346,7 +346,7 @@ export default function ReportsPage() {
         {/* Yearly P&L — FIX 3 + FIX 5 */}
         <TabsContent value="yearly" className="mt-4 space-y-4">
           <Select value={selectedYearId} onValueChange={setSelectedYearId}>
-            <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full min-[420px]:w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               {academicYears.map((y) => (
                 <SelectItem key={y.id} value={y.id}>AY {y.label}</SelectItem>
@@ -486,8 +486,8 @@ export default function ReportsPage() {
 
         {/* All-Time — FIX 3 */}
         <TabsContent value="alltime" className="mt-4 space-y-4">
-          <div className="overflow-auto rounded-lg border bg-card">
-            <table className="w-full text-sm">
+          <div className="overflow-auto rounded-lg border bg-card scrollbar-slim">
+            <table className="min-w-[760px] w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="p-3">Year</th>
@@ -525,7 +525,7 @@ export default function ReportsPage() {
 
           <div className="rounded-lg border bg-card p-4 text-center">
             <p className="text-sm text-muted-foreground">All-Time Cumulative School Profit</p>
-            <p className={`font-mono text-2xl font-bold ${getAllTimeCumulativeProfit() >= 0 ? 'text-income' : 'text-expense'}`}>
+            <p className={`money-fit font-mono text-2xl font-bold ${getAllTimeCumulativeProfit() >= 0 ? 'text-income' : 'text-expense'}`}>
               {formatINR(getAllTimeCumulativeProfit())}
             </p>
           </div>
@@ -554,7 +554,7 @@ export default function ReportsPage() {
             <div>
               <label className="mb-1 block text-xs font-medium">Year 1</label>
               <Select value={compareYear1} onValueChange={setCompareYear1}>
-                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full min-[360px]:w-40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {academicYears.map((y) => (<SelectItem key={y.id} value={y.id}>AY {y.label}</SelectItem>))}
                 </SelectContent>
@@ -563,7 +563,7 @@ export default function ReportsPage() {
             <div>
               <label className="mb-1 block text-xs font-medium">Year 2</label>
               <Select value={compareYear2} onValueChange={setCompareYear2}>
-                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full min-[360px]:w-40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {academicYears.map((y) => (<SelectItem key={y.id} value={y.id}>AY {y.label}</SelectItem>))}
                 </SelectContent>
@@ -595,8 +595,8 @@ export default function ReportsPage() {
               </div>
 
               {comparison.catComparison.length > 0 && (
-                <div className="overflow-auto rounded-lg border bg-card">
-                  <table className="w-full text-sm">
+                <div className="overflow-auto rounded-lg border bg-card scrollbar-slim">
+                  <table className="min-w-[520px] w-full text-sm">
                     <thead>
                       <tr className="border-b text-left text-xs text-muted-foreground">
                         <th className="p-3">Category</th>
@@ -633,13 +633,13 @@ export default function ReportsPage() {
         {/* Expense Analytics — FIX 5 */}
         <TabsContent value="expenses" className="mt-4 space-y-4">
           <Select value={selectedYearId} onValueChange={setSelectedYearId}>
-            <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full min-[420px]:w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               {academicYears.map((y) => (<SelectItem key={y.id} value={y.id}>AY {y.label}</SelectItem>))}
             </SelectContent>
           </Select>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
             <MiniCard label="School" value={formatINR(expenseAnalytics.school)} color="text-expense" />
             <MiniCard label="Home" value={formatINR(expenseAnalytics.home)} color="text-warning" />
             <MiniCard label="Highest Month" value={formatINR(expenseAnalytics.highest)} color="text-expense" />
@@ -650,7 +650,7 @@ export default function ReportsPage() {
           {expenseAnalytics.total > 0 && (
             <div className="rounded-lg border bg-card p-5">
               <h3 className="mb-3 text-sm font-semibold">School vs Home Ratio</h3>
-              <div className="flex items-center gap-6">
+              <div className="flex flex-col items-center gap-6 sm:flex-row">
                 <div className="h-40 w-40">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -668,14 +668,14 @@ export default function ReportsPage() {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   <div className="flex items-center gap-2 text-sm">
                     <div className="h-3 w-3 rounded-full" style={{ background: 'hsl(210, 52%, 25%)' }} />
-                    <span>School: {formatINR(expenseAnalytics.school)} ({Math.round((expenseAnalytics.school / expenseAnalytics.total) * 100)}%)</span>
+                    <span className="text-fit">School: {formatINR(expenseAnalytics.school)} ({Math.round((expenseAnalytics.school / expenseAnalytics.total) * 100)}%)</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <div className="h-3 w-3 rounded-full" style={{ background: 'hsl(38, 92%, 50%)' }} />
-                    <span>Home: {formatINR(expenseAnalytics.home)} ({Math.round((expenseAnalytics.home / expenseAnalytics.total) * 100)}%)</span>
+                    <span className="text-fit">Home: {formatINR(expenseAnalytics.home)} ({Math.round((expenseAnalytics.home / expenseAnalytics.total) * 100)}%)</span>
                   </div>
                 </div>
               </div>
@@ -692,9 +692,9 @@ export default function ReportsPage() {
                   const pct = Math.round((c.value / max) * 100);
                   return (
                     <div key={c.name}>
-                      <div className="mb-1 flex items-center justify-between text-sm">
-                        <span>{i + 1}. {c.type === 'school' ? '🏫' : '🏠'} {c.name}</span>
-                        <span className="font-mono font-medium">{formatINR(c.value)}</span>
+                      <div className="mb-1 flex flex-col gap-1 text-sm min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+                        <span className="text-fit">{i + 1}. {c.type === 'school' ? '🏫' : '🏠'} {c.name}</span>
+                        <span className="money-fit font-mono font-medium">{formatINR(c.value)}</span>
                       </div>
                       <div className="h-2 rounded-full bg-muted">
                         <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, background: c.type === 'school' ? 'hsl(210, 52%, 25%)' : 'hsl(38, 92%, 50%)' }} />
@@ -730,10 +730,10 @@ export default function ReportsPage() {
 
 function MiniCard({ label, value, color, subtitle }: { label: string; value: string; color: string; subtitle?: string }) {
   return (
-    <div className="rounded-lg border bg-card p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`mt-1 break-all font-mono text-lg font-bold ${color}`}>{value}</p>
-      {subtitle && <p className="text-[10px] text-muted-foreground">{subtitle}</p>}
+    <div className="min-w-0 rounded-lg border bg-card p-3">
+      <p className="text-fit text-xs text-muted-foreground">{label}</p>
+      <p className={`money-fit mt-1 font-mono text-lg font-bold ${color}`}>{value}</p>
+      {subtitle && <p className="text-fit text-[10px] text-muted-foreground">{subtitle}</p>}
     </div>
   );
 }
@@ -742,9 +742,9 @@ function PLRow({ label, value, type, bold, indent }: {
   label: string; value: number; type: 'income' | 'expense'; bold?: boolean; indent?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between ${indent ? 'pl-4' : ''}`}>
-      <span className={`text-sm ${bold ? 'font-semibold' : 'text-muted-foreground'}`}>{label}</span>
-      <span className={`font-mono text-sm ${bold ? 'text-base font-bold' : 'font-medium'} ${type === 'income' ? 'text-income' : 'text-expense'}`}>
+    <div className={`flex flex-col gap-1 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between ${indent ? 'pl-4' : ''}`}>
+      <span className={`text-fit text-sm ${bold ? 'font-semibold' : 'text-muted-foreground'}`}>{label}</span>
+      <span className={`money-fit font-mono text-sm ${bold ? 'text-base font-bold' : 'font-medium'} ${type === 'income' ? 'text-income' : 'text-expense'}`}>
         {type === 'expense' && value > 0 ? '-' : ''}{formatINR(value)}
       </span>
     </div>

@@ -190,7 +190,7 @@ export default function SearchPage() {
     <div className="space-y-4 animate-fade-in">
       <h1 className="text-2xl font-bold">Search</h1>
 
-      <div className="flex gap-2">
+      <div className="flex min-w-0 gap-2">
         <div className="relative flex-1">
           <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -223,7 +223,7 @@ export default function SearchPage() {
             <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs">Clear All</Button>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 sm:grid-cols-4">
             <div>
               <Label className="text-xs">From Date</Label>
               <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
@@ -254,7 +254,7 @@ export default function SearchPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3">
             <div>
               <Label className="text-xs">Account</Label>
               <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
@@ -324,22 +324,22 @@ export default function SearchPage() {
           {results.map((r) => (
             <div
               key={r.id}
-              className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+              className="flex min-w-0 cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
               onClick={() => handleClick(r)}
             >
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium">{r.label}</p>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <p className="text-fit text-sm font-medium">{r.label}</p>
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${typeColors[r.type]}`}>
                     {typeLabels[r.type]}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-fit text-xs text-muted-foreground">
                   {r.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                   {r.desc && ` • ${r.desc}`}
                 </p>
               </div>
-              <span className={cn('font-mono text-sm font-semibold', typeColors[r.type])}>
+              <span className={cn('money-fit max-w-[42%] text-right font-mono text-sm font-semibold', typeColors[r.type])}>
                 {r.type === 'income' ? '+' : r.type === 'transfer' ? '' : '-'}{formatINR(r.amount)}
               </span>
             </div>

@@ -41,27 +41,27 @@ export default function TransfersPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold">Transfers & Accounts</h1>
-        <Button className="gap-1.5" onClick={openAdd}>
+        <Button className="w-full gap-1.5 sm:w-auto" onClick={openAdd}>
           <Plus className="h-4 w-4" />
           Transfer Money
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 min-[420px]:grid-cols-2 lg:grid-cols-3">
         {accountBalances.map((acc) => (
           <div key={acc.id} className="rounded-lg border bg-card p-4">
             <div className="flex items-center gap-2">
               <span className="text-lg">{ACCOUNT_TYPE_ICON[acc.type]}</span>
               <div>
-                <p className="text-sm font-semibold">{acc.name}</p>
+                <p className="text-fit text-sm font-semibold">{acc.name}</p>
                 <p className="text-[10px] uppercase text-muted-foreground">
                   {acc.type.replace('_', ' ')}
                 </p>
               </div>
             </div>
-            <p className={cn('mt-3 font-mono text-xl font-bold', acc.balance >= 0 ? 'text-primary' : 'text-expense')}>
+            <p className={cn('money-fit mt-3 font-mono text-xl font-bold', acc.balance >= 0 ? 'text-primary' : 'text-expense')}>
               {formatINR(acc.balance)}
             </p>
           </div>
@@ -80,7 +80,7 @@ export default function TransfersPage() {
             {sortedTransfers.map((t) => (
               <div
                 key={t.id}
-                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+                className="flex min-w-0 cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
                 onClick={() => openEdit(t)}
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
@@ -88,16 +88,16 @@ export default function TransfersPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 text-sm font-medium">
-                    <span className="truncate">{getAccountName(t.fromAccountId)}</span>
+                    <span className="text-fit">{getAccountName(t.fromAccountId)}</span>
                     <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-                    <span className="truncate">{getAccountName(t.toAccountId)}</span>
+                    <span className="text-fit">{getAccountName(t.toAccountId)}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-fit text-xs text-muted-foreground">
                     {t.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                     {t.notes && ` • ${t.notes}`}
                   </p>
                 </div>
-                <span className="font-mono text-sm font-semibold">{formatINR(t.amount)}</span>
+                <span className="money-fit max-w-[42%] text-right font-mono text-sm font-semibold">{formatINR(t.amount)}</span>
               </div>
             ))}
           </div>

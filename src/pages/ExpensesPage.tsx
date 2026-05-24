@@ -49,25 +49,25 @@ export default function ExpensesPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold">Expenses</h1>
-          <p className="text-sm text-muted-foreground">AY {currentYear?.label}</p>
+          <p className="text-fit text-sm text-muted-foreground">AY {currentYear?.label}</p>
         </div>
-        <Button variant="destructive" className="gap-1.5" onClick={openAdd}>
+        <Button variant="destructive" className="w-full gap-1.5 sm:w-auto" onClick={openAdd}>
           <Plus className="h-4 w-4" />
           Add Expense
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-3">
         <StatCard title="School" value={formatINRAbbr(stats.school)} icon={School} variant="expense" />
         <StatCard title="Home" value={formatINRAbbr(stats.home)} icon={Home} variant="pending" />
         <StatCard title="Total" value={formatINRAbbr(stats.total)} icon={TrendingDown} variant="expense" />
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="all">All ({stats.entries.length})</TabsTrigger>
           <TabsTrigger value="school">🏫 School</TabsTrigger>
           <TabsTrigger value="home">🏠 Home</TabsTrigger>
@@ -87,7 +87,7 @@ export default function ExpensesPage() {
               {sorted.map((entry) => (
                 <div
                   key={entry.id}
-                  className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+                  className="flex min-w-0 cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
                   onClick={() => openEdit(entry)}
                 >
                   <div
@@ -103,18 +103,18 @@ export default function ExpensesPage() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">{entry.category}</p>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="text-fit text-sm font-medium">{entry.category}</p>
                       {entry.isRecurringInstance && (
                         <Repeat className="h-3 w-3 text-muted-foreground" />
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-fit text-xs text-muted-foreground">
                       {entry.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                       {entry.description && ` • ${entry.description}`}
                     </p>
                   </div>
-                  <span className="font-mono text-sm font-semibold text-expense">
+                  <span className="money-fit max-w-[42%] text-right font-mono text-sm font-semibold text-expense">
                     -{formatINR(entry.amount)}
                   </span>
                 </div>

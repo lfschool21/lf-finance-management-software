@@ -10,6 +10,7 @@ import Dashboard from "@/pages/Dashboard";
 import IncomePage from "@/pages/IncomePage";
 import ExpensesPage from "@/pages/ExpensesPage";
 import TransfersPage from "@/pages/TransfersPage";
+import BankBalancesPage from "@/pages/BankBalancesPage";
 import ReportsPage from "@/pages/ReportsPage";
 import SearchPage from "@/pages/SearchPage";
 import SettingsPage from "@/pages/SettingsPage";
@@ -53,6 +54,7 @@ const App = () => (
                       <Route path="/income" element={<IncomePage />} />
                       <Route path="/expenses" element={<ExpensesPage />} />
                       <Route path="/transfers" element={<TransfersPage />} />
+                      <Route path="/balances" element={<BankBalancesPage />} />
                       <Route path="/reports" element={<ReportsPage />} />
                       <Route path="/search" element={<SearchPage />} />
                       <Route path="/settings" element={<SettingsPage />} />

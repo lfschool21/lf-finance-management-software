@@ -167,7 +167,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
             {/* Income Type Toggle */}
             <div>
               <Label className="mb-2 block text-sm">Income Type</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => setIncomeType('tuition')}
@@ -272,7 +272,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
             {/* Tags */}
             <div>
               <Label>Tags (optional)</Label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 min-[360px]:flex-row">
                 <Input
                   placeholder="Add tags, comma separated"
                   value={tagInput}
@@ -284,7 +284,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
               {tags.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {tags.map((tag) => (
-                    <Badge key={tag} variant="secondary" className="gap-1">
+                    <Badge key={tag} variant="secondary" className="max-w-full gap-1">
                       {tag}
                       <X className="h-3 w-3 cursor-pointer" onClick={() => setTags(tags.filter((t) => t !== tag))} />
                     </Badge>
@@ -294,13 +294,13 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2 pt-2">
+            <div className="grid grid-cols-2 gap-2 pt-2 sm:flex sm:items-center">
               {isEdit && (
-                <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)} disabled={saving}>
+                <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)} disabled={saving} className="col-span-2 sm:col-span-1">
                   Delete
                 </Button>
               )}
-              <div className="flex-1" />
+              <div className="hidden flex-1 sm:block" />
               <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
               <Button onClick={handleSave} disabled={saving} className="gap-1.5 bg-income text-income-foreground hover:bg-income/90">
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}

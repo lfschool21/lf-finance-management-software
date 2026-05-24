@@ -136,18 +136,18 @@ export default function IncomePage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold">Income</h1>
-          <p className="text-sm text-muted-foreground">AY {currentYear?.label}</p>
+          <p className="text-fit text-sm text-muted-foreground">AY {currentYear?.label}</p>
         </div>
-        <Button className="gap-1.5 bg-income text-income-foreground hover:bg-income/90" onClick={openAdd}>
+        <Button className="w-full gap-1.5 bg-income text-income-foreground hover:bg-income/90 sm:w-auto" onClick={openAdd}>
           <Plus className="h-4 w-4" />
           Add Income
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Tuition Collected" value={formatINRAbbr(stats.tuitionTotal)} fullValue={formatINR(stats.tuitionTotal)} icon={IndianRupee} variant="income" />
         <StatCard title="Lunch Collected" value={formatINRAbbr(stats.lunchTotal)} fullValue={formatINR(stats.lunchTotal)} icon={UtensilsCrossed} variant="income" />
         <StatCard title="Target" value={formatINRAbbr(stats.target)} fullValue={formatINR(stats.target)} icon={TrendingUp} variant="balance" />
@@ -156,10 +156,10 @@ export default function IncomePage() {
 
       {/* Fee progress bar with edit target button */}
       <div className="rounded-lg border bg-card p-4">
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm font-medium">Tuition Fee Collection Progress</span>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-sm font-bold text-primary">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="money-fit font-mono text-sm font-bold text-primary">
               {formatINR(stats.tuitionTotal)} / {formatINR(stats.target)}
             </span>
             <button
@@ -180,7 +180,7 @@ export default function IncomePage() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="tuition">Tuition Fees</TabsTrigger>
           <TabsTrigger value="lunch">Lunch Fees</TabsTrigger>
           <TabsTrigger value="pending">
@@ -217,9 +217,9 @@ export default function IncomePage() {
                     y.yearsOverdue >= 2 && 'border-expense/50'
                   )}
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <h4 className="font-semibold">AY {y.label}</h4>
                         {y.yearsOverdue >= 2 && (
                           <span className="rounded bg-expense/10 px-2 py-0.5 text-[10px] font-bold text-expense">
@@ -227,12 +227,12 @@ export default function IncomePage() {
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-fit text-sm text-muted-foreground">
                         Collected: {formatINR(y.collected)} / {formatINR(y.totalTarget)}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-mono text-lg font-bold text-warning">{formatINR(y.totalRemaining)}</p>
+                    <div className="min-w-0 text-left sm:text-right">
+                      <p className="money-fit font-mono text-lg font-bold text-warning">{formatINR(y.totalRemaining)}</p>
                       <p className="text-xs text-muted-foreground">still pending</p>
                     </div>
                   </div>
@@ -253,15 +253,15 @@ export default function IncomePage() {
                   {/* Breakdown: target gap vs carry-forward */}
                   {y.carryForward > 0 && (
                     <div className="mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs space-y-1">
-                      <div className="flex justify-between text-muted-foreground">
+                      <div className="flex flex-col gap-1 text-muted-foreground min-[420px]:flex-row min-[420px]:justify-between">
                         <span>Remaining from this year's target</span>
-                        <span className="font-mono">{formatINR(y.remainingFromTarget)}</span>
+                        <span className="money-fit font-mono">{formatINR(y.remainingFromTarget)}</span>
                       </div>
-                      <div className="flex justify-between text-warning">
+                      <div className="flex flex-col gap-1 text-warning min-[420px]:flex-row min-[420px]:justify-between">
                         <span className="flex items-center gap-1">
                           <History className="h-3 w-3" /> Carry-forward from previous year
                         </span>
-                        <span className="font-mono">{formatINR(y.carryForward)}</span>
+                        <span className="money-fit font-mono">{formatINR(y.carryForward)}</span>
                       </div>
                     </div>
                   )}
@@ -390,16 +390,16 @@ function TransactionList({
       {sorted.map((entry) => (
         <div
           key={entry.id}
-          className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+          className="flex min-w-0 cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
           onClick={() => onEdit(entry)}
         >
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{entry.notes || 'No description'}</p>
+            <p className="text-fit text-sm font-medium">{entry.notes || 'No description'}</p>
             <p className="text-xs text-muted-foreground">
               {entry.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
           </div>
-          <span className="font-mono text-sm font-semibold text-income">
+          <span className="money-fit max-w-[45%] text-right font-mono text-sm font-semibold text-income">
             +{formatINR(entry.amount)}
           </span>
         </div>

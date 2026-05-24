@@ -305,10 +305,10 @@ export default function SettingsPage() {
       <div className="space-y-3">
         {/* Appearance */}
         <SettingsCard icon={Palette} title="Appearance">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+            <div className="min-w-0">
               <p className="text-sm font-medium">Dark Mode</p>
-              <p className="text-xs text-muted-foreground">Toggle between light and dark themes</p>
+              <p className="text-fit text-xs text-muted-foreground">Toggle between light and dark themes</p>
             </div>
             <div className="flex items-center gap-2">
               <Sun className="h-4 w-4 text-muted-foreground" />
@@ -323,9 +323,9 @@ export default function SettingsPage() {
           <div className="space-y-3">
             <div>
               <p className="text-xs text-muted-foreground">Email</p>
-              <p className="text-sm font-medium">{userEmail || '—'}</p>
+              <p className="text-fit text-sm font-medium">{userEmail || '—'}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
               <Button size="sm" variant="outline" onClick={() => setShowPasswordModal(true)}>
                 <Shield className="mr-1.5 h-3.5 w-3.5" /> Change Password
               </Button>
@@ -340,12 +340,12 @@ export default function SettingsPage() {
         <SettingsCard icon={Landmark} title="Bank Accounts">
           <div className="space-y-2">
             {accounts.map((acc) => (
-              <div key={acc.id} className="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2">
-                <div>
-                  <p className="text-sm font-medium">{acc.name}</p>
+              <div key={acc.id} className="flex flex-col gap-2 rounded-md bg-secondary/50 px-3 py-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+                <div className="min-w-0">
+                  <p className="text-fit text-sm font-medium">{acc.name}</p>
                   <p className="text-[10px] uppercase text-muted-foreground">{acc.type.replace('_', ' ')}</p>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1">
                   <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openAccountEdit(acc.id)}>Edit</Button>
                   {!acc.isArchived && acc.type !== 'cash' && (
                     <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => archiveAccount(acc.id)}>Archive</Button>
@@ -363,10 +363,10 @@ export default function SettingsPage() {
         <SettingsCard icon={GraduationCap} title="Academic Years">
           <div className="space-y-2">
             {academicYears.map((y) => (
-              <div key={y.id} className="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2">
-                <div>
+              <div key={y.id} className="flex flex-col gap-2 rounded-md bg-secondary/50 px-3 py-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+                <div className="min-w-0">
                   <p className="text-sm font-medium">AY {y.label}</p>
-                  <p className="text-xs text-muted-foreground">Target: {formatINR(y.targetTuitionFees)} • {y.status.replace('_', ' ')}</p>
+                  <p className="text-fit text-xs text-muted-foreground">Target: {formatINR(y.targetTuitionFees)} • {y.status.replace('_', ' ')}</p>
                 </div>
                 <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openYearEdit(y.id)}>Edit</Button>
               </div>
@@ -381,10 +381,10 @@ export default function SettingsPage() {
         <SettingsCard icon={Repeat} title="Recurring Templates">
           <div className="space-y-2">
             {recurringTemplates.map((t) => (
-              <div key={t.id} className="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2">
-                <div>
-                  <p className="text-sm font-medium">{t.category}</p>
-                  <p className="text-xs text-muted-foreground">{formatINR(t.defaultAmount)} / {t.recurrenceInterval}</p>
+              <div key={t.id} className="flex flex-col gap-2 rounded-md bg-secondary/50 px-3 py-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+                <div className="min-w-0">
+                  <p className="text-fit text-sm font-medium">{t.category}</p>
+                  <p className="money-fit text-xs text-muted-foreground">{formatINR(t.defaultAmount)} / {t.recurrenceInterval}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch checked={t.isActive} onCheckedChange={() => toggleRecurringActive(t.id)} />
@@ -401,7 +401,7 @@ export default function SettingsPage() {
         {/* Data & Backup */}
         <SettingsCard icon={Database} title="Data & Backup">
           <div className="space-y-3">
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
               <Button size="sm" variant="outline" onClick={handleCreateBackup} disabled={backupLoading} className="gap-1.5">
                 {backupLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                 Create Backup
@@ -412,7 +412,7 @@ export default function SettingsPage() {
               </Button>
             </div>
             <div className="border-t pt-3">
-              <Button size="sm" variant="destructive" className="gap-1.5" onClick={() => setShowWipeConfirm(true)}>
+              <Button size="sm" variant="destructive" className="w-full gap-1.5 min-[420px]:w-auto" onClick={() => setShowWipeConfirm(true)}>
                 <Trash2 className="h-3.5 w-3.5" /> Wipe All Data
               </Button>
               <p className="mt-1 text-[10px] text-muted-foreground">
@@ -425,8 +425,8 @@ export default function SettingsPage() {
         {/* About */}
         <SettingsCard icon={Info} title="About">
           <div className="space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">Version</span><span>1.0.0</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Database</span><span className="text-income">Connected</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Version</span><span>1.0.0</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Database</span><span className="text-income">Connected</span></div>
           </div>
         </SettingsCard>
       </div>
@@ -559,10 +559,10 @@ function SettingsCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="mb-3 flex items-center gap-2">
+    <div className="min-w-0 rounded-lg border bg-card p-4">
+      <div className="mb-3 flex min-w-0 items-center gap-2">
         <Icon className="h-4 w-4 text-primary" />
-        <h3 className="text-sm font-semibold">{title}</h3>
+        <h3 className="text-fit text-sm font-semibold">{title}</h3>
       </div>
       {children}
     </div>

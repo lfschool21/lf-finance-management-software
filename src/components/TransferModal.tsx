@@ -187,13 +187,13 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
               <Textarea id="tr-notes" placeholder="Reason for transfer..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
             </div>
 
-            <div className="flex items-center gap-2 pt-2">
+            <div className="grid grid-cols-2 gap-2 pt-2 sm:flex sm:items-center">
               {isEdit && (
-                <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)} disabled={saving}>
+                <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)} disabled={saving} className="col-span-2 sm:col-span-1">
                   Delete
                 </Button>
               )}
-              <div className="flex-1" />
+              <div className="hidden flex-1 sm:block" />
               <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
               <Button onClick={handleSave} disabled={saving} className="gap-1.5">
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}

@@ -249,9 +249,9 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                   <School className="h-5 w-5 text-primary" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="font-semibold">🏫 School Expense</p>
-                  <p className="text-xs text-muted-foreground">Salary, rent, bills, supplies...</p>
+                  <p className="text-fit text-xs text-muted-foreground">Salary, rent, bills, supplies...</p>
                 </div>
               </button>
               <button
@@ -262,9 +262,9 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
                   <Home className="h-5 w-5 text-warning" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="font-semibold">🏠 Home Expense</p>
-                  <p className="text-xs text-muted-foreground">Fuel, groceries, personal...</p>
+                  <p className="text-fit text-xs text-muted-foreground">Fuel, groceries, personal...</p>
                 </div>
               </button>
             </div>
@@ -276,7 +276,7 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
               <Button variant="ghost" size="sm" onClick={() => setStep(1)} className="gap-1">
                 <ArrowLeft className="h-4 w-4" /> Back
               </Button>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                 {categories.map((cat) => (
                   <button
                     key={cat}
@@ -300,7 +300,7 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
               {/* Header showing type + category */}
               <div className="flex items-center gap-2 rounded-lg bg-muted p-2">
                 {expenseType === 'school' ? <School className="h-4 w-4 text-primary" /> : <Home className="h-4 w-4 text-warning" />}
-                <span className="text-sm font-medium">{expenseType === 'school' ? '🏫 School' : '🏠 Home'} → {category}</span>
+                <span className="text-fit text-sm font-medium">{expenseType === 'school' ? '🏫 School' : '🏠 Home'} → {category}</span>
                 {!isEdit && (
                   <Button variant="link" size="sm" className="ml-auto h-auto p-0 text-xs" onClick={() => setStep(1)}>
                     Change
@@ -352,14 +352,14 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
 
               <div>
                 <Label>Tags (optional)</Label>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 min-[360px]:flex-row">
                   <Input placeholder="Comma separated" value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())} />
                   <Button type="button" size="sm" variant="outline" onClick={addTag}>Add</Button>
                 </div>
                 {tags.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {tags.map((tag) => (
-                      <Badge key={tag} variant="secondary" className="gap-1">
+                      <Badge key={tag} variant="secondary" className="max-w-full gap-1">
                         {tag}
                         <X className="h-3 w-3 cursor-pointer" onClick={() => setTags(tags.filter((t) => t !== tag))} />
                       </Badge>
@@ -368,13 +368,13 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
                 )}
               </div>
 
-              <div className="flex items-center gap-2 pt-2">
+              <div className="grid grid-cols-2 gap-2 pt-2 sm:flex sm:items-center">
                 {isEdit && (
-                  <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)} disabled={saving}>
+                  <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)} disabled={saving} className="col-span-2 sm:col-span-1">
                     Delete
                   </Button>
                 )}
-                <div className="flex-1" />
+                <div className="hidden flex-1 sm:block" />
                 <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
                 <Button onClick={() => handleSave()} disabled={saving} variant="destructive" className="gap-1.5">
                   {saving && <Loader2 className="h-4 w-4 animate-spin" />}

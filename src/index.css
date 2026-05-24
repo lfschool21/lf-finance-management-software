@@ -113,6 +113,15 @@
 @layer base {
   * {
     @apply border-border;
+    min-width: 0;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   body {
@@ -127,5 +136,28 @@
   .font-mono-nums {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-safe {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .text-fit {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  .money-fit {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .scrollbar-slim {
+    scrollbar-width: thin;
   }
 }

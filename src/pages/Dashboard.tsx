@@ -179,10 +179,10 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-fit text-sm text-muted-foreground">
             Academic Year {currentYear?.label || '—'} • Little Flowers School
           </p>
         </div>
@@ -209,7 +209,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
         <StatCard title="Total Income" value={formatINRAbbr(stats.totalIncome)} fullValue={formatINR(stats.totalIncome)} icon={IndianRupee} variant="income" subtitle="Tuition + Lunch" />
         <StatCard title="School Expenses" value={formatINRAbbr(schoolExpensesTotal)} fullValue={formatINR(schoolExpensesTotal)} icon={TrendingDown} variant="expense" />
         <StatCard title="Net Profit" value={formatINRAbbr(stats.netProfit)} fullValue={formatINR(stats.netProfit)} icon={BarChart3} variant={stats.netProfit >= 0 ? 'profit' : 'expense'} subtitle="School income − expenses" />
@@ -272,9 +272,9 @@ export default function Dashboard() {
 
       {/* Current year: Tuition Fee Collection Progress */}
       <div className="rounded-lg border bg-card p-4">
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm font-medium">Tuition Fee Collection — AY {currentYear?.label}</span>
-          <span className="font-mono text-sm font-bold text-primary">
+          <span className="money-fit font-mono text-sm font-bold text-primary">
             {formatINR(stats.tuitionCollected)} / {formatINR(stats.target)}
           </span>
         </div>
@@ -298,9 +298,9 @@ export default function Dashboard() {
                 : 0;
               return (
                 <div key={year.id}>
-                  <div className="mb-1 flex items-center justify-between">
+                  <div className="mb-1 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                     <span className="text-sm font-medium">AY {year.label}</span>
-                    <span className="font-mono text-sm font-bold text-warning">{formatINR(info.remaining)} pending</span>
+                    <span className="money-fit font-mono text-sm font-bold text-warning">{formatINR(info.remaining)} pending</span>
                   </div>
                   <Progress value={collectPct} className="h-2.5 [&>div]:bg-warning" />
                   <div className="mt-1 flex justify-between text-xs text-muted-foreground">
@@ -367,8 +367,8 @@ export default function Dashboard() {
           {categoryData.length === 0 ? (
             <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">No expenses yet</div>
           ) : (
-            <div className="flex items-center gap-4">
-              <div className="h-48 w-48 flex-shrink-0">
+            <div className="flex flex-col items-center gap-4 sm:flex-row">
+              <div className="h-40 w-40 flex-shrink-0 sm:h-48 sm:w-48">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={35} strokeWidth={2}>
@@ -383,7 +383,7 @@ export default function Dashboard() {
                   <div key={cat.name} className="flex items-center gap-2 text-xs">
                     <div className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
                     <span className="truncate text-muted-foreground">{cat.name}</span>
-                    <span className="ml-auto font-mono font-medium">{formatINRAbbr(cat.value)}</span>
+                    <span className="money-fit ml-auto text-right font-mono font-medium">{formatINRAbbr(cat.value)}</span>
                   </div>
                 ))}
               </div>
@@ -404,15 +404,15 @@ export default function Dashboard() {
         ) : (
           <div className="divide-y">
             {recentTransactions.map((tx) => (
-              <div key={tx.id} className="flex items-center gap-3 px-4 py-3">
+              <div key={tx.id} className="flex min-w-0 items-center gap-3 px-4 py-3">
                 <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg', tx.isIncome ? 'bg-income/10' : 'bg-expense/10')}>
                   {tx.isIncome ? <TrendingUp className="h-4 w-4 text-income" /> : tx.type === 'school' ? <School className="h-4 w-4 text-expense" /> : <Home className="h-4 w-4 text-expense" />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{tx.category}</p>
-                  <p className="text-xs text-muted-foreground">{tx.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  <p className="text-fit text-sm font-medium">{tx.category}</p>
+                  <p className="text-fit text-xs text-muted-foreground">{tx.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                 </div>
-                <span className={cn('font-mono text-sm font-semibold', tx.isIncome ? 'text-income' : 'text-expense')}>
+                <span className={cn('money-fit max-w-[42%] text-right font-mono text-sm font-semibold', tx.isIncome ? 'text-income' : 'text-expense')}>
                   {tx.isIncome ? '+' : '-'}{formatINR(tx.amount)}
                 </span>
               </div>

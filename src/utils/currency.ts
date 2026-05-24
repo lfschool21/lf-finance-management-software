@@ -33,7 +33,7 @@ function formatIndianInt(numStr: string): string {
 }
 
 /**
- * Abbreviated format for large numbers: ₹12.5L, ₹1.2Cr
+ * Abbreviated format for large numbers: ₹12.5L, ₹1.75L, ₹1.2Cr
  */
 export function formatINRAbbr(amount: number): string {
   const abs = Math.abs(amount);
@@ -41,17 +41,21 @@ export function formatINRAbbr(amount: number): string {
 
   if (abs >= 1_00_00_000) {
     const cr = abs / 1_00_00_000;
-    return `${sign}₹${cr % 1 === 0 ? cr.toFixed(0) : cr.toFixed(1)}Cr`;
+    return `${sign}₹${formatCompactDecimal(cr)}Cr`;
   }
   if (abs >= 1_00_000) {
     const l = abs / 1_00_000;
-    return `${sign}₹${l % 1 === 0 ? l.toFixed(0) : l.toFixed(1)}L`;
+    return `${sign}₹${formatCompactDecimal(l)}L`;
   }
   if (abs >= 1_000) {
     const k = abs / 1_000;
-    return `${sign}₹${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}K`;
+    return `${sign}₹${formatCompactDecimal(k)}K`;
   }
   return formatINR(amount);
+}
+
+function formatCompactDecimal(value: number): string {
+  return value.toFixed(2).replace(/\.?0+$/, '');
 }
 
 /**

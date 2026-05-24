@@ -43,14 +43,14 @@ export function StatCard({ title, value, icon: Icon, variant, subtitle, classNam
   return (
     <div
       className={cn(
-        'rounded-lg border p-4 transition-all duration-300 hover:shadow-md animate-fade-in',
+        'min-w-0 rounded-lg border p-3 transition-all duration-300 hover:shadow-md animate-fade-in sm:p-4',
         variantStyles[variant],
         className
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium uppercase tracking-wider opacity-70">{title}</p>
+          <p className="text-fit text-xs font-medium uppercase tracking-wider opacity-70">{title}</p>
           {fullValue ? (
             <TooltipProvider>
               <Tooltip>
