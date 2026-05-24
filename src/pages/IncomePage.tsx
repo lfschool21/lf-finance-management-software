@@ -34,7 +34,10 @@ export default function IncomePage() {
   const currentYear = academicYears.find((y) => y.id === currentYearId);
 
   const stats = useMemo(() => {
-    const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
+    // Exclude late collections (they belong to a previous year) from this year's progress
+    const yearIncome = incomeEntries.filter(
+      (i) => i.academicYearId === currentYearId && !i.isLateCollection
+    );
     const tuition = yearIncome.filter((i) => i.type === 'tuition');
     const lunch = yearIncome.filter((i) => i.type === 'lunch');
     const tuitionTotal = tuition.reduce((s, i) => s + i.amount, 0);
@@ -46,15 +49,24 @@ export default function IncomePage() {
   const pendingYears = useMemo(() => {
     return academicYears
       .map((y) => {
+        // Count both direct entries for this year AND late-collection payments attributed to it
         const collected = incomeEntries
-          .filter((i) => i.academicYearId === y.id && i.type === 'tuition')
+          .filter(
+            (i) =>
+              i.type === 'tuition' &&
+              (
+                (i.academicYearId === y.id && !i.isLateCollection) ||
+                (i.isLateCollection && i.originalYearId === y.id)
+              )
+          )
           .reduce((s, i) => s + i.amount, 0);
         const remainingFromTarget = Math.max(0, y.targetTuitionFees - collected);
         const carryForward = y.carryForwardFees || 0;
+        const totalTarget = y.targetTuitionFees + carryForward;
         const totalRemaining = remainingFromTarget + carryForward;
         const startYear = y.startDate.getFullYear();
         const yearsOverdue = new Date().getFullYear() - startYear - 1;
-        return { ...y, collected, remainingFromTarget, carryForward, totalRemaining, yearsOverdue };
+        return { ...y, collected, remainingFromTarget, carryForward, totalTarget, totalRemaining, yearsOverdue };
       })
       .filter((y) => y.totalRemaining > 0);
   }, [academicYears, incomeEntries]);
@@ -199,67 +211,85 @@ export default function IncomePage() {
           {pendingYears.length === 0 ? (
             <EmptyState message="No pending collections! All fees are up to date." />
           ) : (
-            pendingYears.map((y) => (
-              <div
-                key={y.id}
-                className={cn(
-                  'rounded-lg border bg-card p-4',
-                  y.yearsOverdue >= 2 && 'border-expense/50'
-                )}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-semibold">AY {y.label}</h4>
-                      {y.yearsOverdue >= 2 && (
-                        <span className="rounded bg-expense/10 px-2 py-0.5 text-[10px] font-bold text-expense">
-                          ⚠ Pending {y.yearsOverdue}+ years
-                        </span>
-                      )}
+            pendingYears.map((y) => {
+              const collectProgress = y.totalTarget > 0
+                ? Math.min(100, Math.round((y.collected / y.totalTarget) * 100))
+                : 0;
+              return (
+                <div
+                  key={y.id}
+                  className={cn(
+                    'rounded-lg border bg-card p-4',
+                    y.yearsOverdue >= 2 && 'border-expense/50'
+                  )}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-semibold">AY {y.label}</h4>
+                        {y.yearsOverdue >= 2 && (
+                          <span className="rounded bg-expense/10 px-2 py-0.5 text-[10px] font-bold text-expense">
+                            ⚠ Pending {y.yearsOverdue}+ years
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Collected: {formatINR(y.collected)} / {formatINR(y.totalTarget)}
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Target: {formatINR(y.targetTuitionFees)} • Collected: {formatINR(y.collected)}
+                    <div className="text-right">
+                      <p className="font-mono text-lg font-bold text-warning">{formatINR(y.totalRemaining)}</p>
+                      <p className="text-xs text-muted-foreground">still pending</p>
+                    </div>
+                  </div>
+
+                  {/* Collection progress bar */}
+                  <div className="mt-3">
+                    <div className="h-2 rounded-full bg-muted">
+                      <div
+                        className="h-2 rounded-full bg-income transition-all"
+                        style={{ width: `${collectProgress}%` }}
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {collectProgress}% collected
                     </p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-mono text-lg font-bold text-warning">{formatINR(y.totalRemaining)}</p>
-                    <p className="text-xs text-muted-foreground">total remaining</p>
+
+                  {/* Breakdown: target gap vs carry-forward */}
+                  {y.carryForward > 0 && (
+                    <div className="mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs space-y-1">
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Remaining from this year's target</span>
+                        <span className="font-mono">{formatINR(y.remainingFromTarget)}</span>
+                      </div>
+                      <div className="flex justify-between text-warning">
+                        <span className="flex items-center gap-1">
+                          <History className="h-3 w-3" /> Carry-forward from previous year
+                        </span>
+                        <span className="font-mono">{formatINR(y.carryForward)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => openLatePayment(y.id)}>
+                      Record Late Payment
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1 text-muted-foreground"
+                      onClick={() => openEditCarry(y.id, y.carryForward)}
+                      title="Set last year's remaining fees carried forward"
+                    >
+                      <History className="h-3.5 w-3.5" />
+                      {y.carryForward > 0 ? 'Edit Carry-Forward' : 'Add Carry-Forward'}
+                    </Button>
                   </div>
                 </div>
-
-                {/* Breakdown if carry-forward exists */}
-                {y.carryForward > 0 && (
-                  <div className="mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs space-y-1">
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>From this year's target</span>
-                      <span className="font-mono">{formatINR(y.remainingFromTarget)}</span>
-                    </div>
-                    <div className="flex justify-between text-warning">
-                      <span className="flex items-center gap-1">
-                        <History className="h-3 w-3" /> Last year's carry-forward
-                      </span>
-                      <span className="font-mono">{formatINR(y.carryForward)}</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={() => openLatePayment(y.id)}>
-                    Record Late Payment
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="gap-1 text-muted-foreground"
-                    onClick={() => openEditCarry(y.id, y.carryForward)}
-                    title="Set last year's remaining fees carried forward"
-                  >
-                    <History className="h-3.5 w-3.5" />
-                    {y.carryForward > 0 ? 'Edit Carry-Forward' : 'Add Carry-Forward'}
-                  </Button>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
 
           {/* Allow setting carry-forward for years with no current gap (fully collected from target) */}
