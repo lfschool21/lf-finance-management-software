@@ -7,6 +7,7 @@ export interface DbAcademicYear {
   start_date: string;
   end_date: string;
   target_tuition_fees: number;
+  carry_forward_fees: number;
   status: 'active' | 'closed' | 'pending_collections';
   created_at: string;
   updated_at: string;
