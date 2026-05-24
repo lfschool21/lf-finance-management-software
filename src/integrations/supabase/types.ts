@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       academic_years: {
         Row: {
+          carry_forward_fees: number
           created_at: string | null
           end_date: string
           id: string
@@ -27,6 +28,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          carry_forward_fees?: number
           created_at?: string | null
           end_date: string
           id?: string
@@ -38,6 +40,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          carry_forward_fees?: number
           created_at?: string | null
           end_date?: string
           id?: string
