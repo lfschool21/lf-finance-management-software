@@ -4,7 +4,6 @@ import {
   TrendingDown,
   BarChart3,
   Landmark,
-  Clock,
   TrendingUp,
   Plus,
   ArrowLeftRight,
@@ -72,32 +71,33 @@ export default function Dashboard() {
   const currentYear = academicYears.find((y) => y.id === currentYearId);
 
   const stats = useMemo(() => {
+    // breakdown now excludes late-collection entries from the current year's income
     const breakdown = getYearProfitBreakdown(currentYearId);
     const projected = getProjectedProfit(currentYearId);
 
-    // Current year: only count direct (non-late) tuition entries for the progress bar
+    // Current year: direct (non-late) tuition only — for the progress bar denominator
     const tuitionCollected = incomeEntries
       .filter((i) => i.academicYearId === currentYearId && i.type === 'tuition' && !i.isLateCollection)
       .reduce((s, i) => s + i.amount, 0);
     const target = currentYear?.targetTuitionFees || 0;
     const feeProgress = target > 0 ? Math.round((tuitionCollected / target) * 100) : 0;
 
-    // Use the shared helper: pending across ALL previous years (excluding current)
-    const prevPending = academicYears
-      .filter((y) => y.id !== currentYearId)
-      .reduce((s, y) => s + getPendingForYear(y.id).remaining, 0);
+    // Previous years pending — uses shared helper that accounts for late payments + carry-forward
+    const prevYears = academicYears.filter((y) => y.id !== currentYearId);
+    const prevPending = prevYears.reduce((s, y) => s + getPendingForYear(y.id).remaining, 0);
+
+    // Per-year breakdown for the previous-year pending progress bars
+    const prevYearPending = prevYears
+      .map((y) => ({ year: y, info: getPendingForYear(y.id) }))
+      .filter((p) => p.info.remaining > 0);
 
     const totalBalance = getTotalBalance();
 
-    // Home expenses for the year
     const homeExpenses = expenseEntries
       .filter((e) => e.academicYearId === currentYearId && e.expenseType === 'home')
       .reduce((s, e) => s + e.amount, 0);
 
-    // Current year pending (target gap only — carry-forward is for past years)
-    const currentPending = getPendingForYear(currentYearId);
-
-    // Projected breakdown values
+    // Projected breakdown
     const year = currentYear;
     let projectedIncome = breakdown.totalIncome;
     let projectedExpenses = breakdown.fixedExpenses + breakdown.extraExpenses;
@@ -115,9 +115,9 @@ export default function Dashboard() {
       const currentSchoolExpenses = breakdown.fixedExpenses + breakdown.extraExpenses;
       const avgMonthlyExpense = currentSchoolExpenses / monthsElapsed;
       projectedExpenses = currentSchoolExpenses + (avgMonthlyExpense * remainingMonths);
-      // Only project target gap as future income (carry-forward is past debt, not future revenue)
-      const uncollected = currentPending.targetGap;
-      projectedIncome = breakdown.totalIncome + uncollected;
+      // Only project the target gap (not carry-forward) as future income
+      const currentPending = getPendingForYear(currentYearId);
+      projectedIncome = breakdown.totalIncome + currentPending.targetGap;
     }
 
     return {
@@ -127,16 +127,19 @@ export default function Dashboard() {
       target,
       feeProgress,
       prevPending,
+      prevYearPending,
       totalBalance,
       homeExpenses,
       projectedIncome,
       projectedExpenses,
-      currentPending,
     };
   }, [incomeEntries, expenseEntries, accounts, academicYears, currentYearId, currentYear, transfers, getTotalBalance, getYearProfitBreakdown, getProjectedProfit, getPendingForYear]);
 
   const monthlyData = useMemo(() => {
-    const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
+    // Only direct income entries for this year (exclude late collections — they belong to original years)
+    const yearIncome = incomeEntries.filter(
+      (i) => i.academicYearId === currentYearId && !i.isLateCollection
+    );
     const yearExpenses = expenseEntries.filter((e) => e.academicYearId === currentYearId && e.expenseType === 'school');
     return MONTHS.map((month, idx) => {
       const monthNum = (idx + 5) % 12;
@@ -156,12 +159,16 @@ export default function Dashboard() {
   const recentTransactions = useMemo(() => {
     const all = [
       ...incomeEntries.map((i) => ({
-        id: i.id, date: i.date, category: i.type === 'tuition' ? 'Tuition Fees' : 'Lunch Fees',
+        id: i.id, date: i.date,
+        category: i.isLateCollection
+          ? `Late Collection (prev year)`
+          : i.type === 'tuition' ? 'Tuition Fees' : 'Lunch Fees',
         amount: i.amount, isIncome: true, type: null as string | null,
+        isLate: i.isLateCollection,
       })),
       ...expenseEntries.map((e) => ({
         id: e.id, date: e.date, category: e.category, amount: e.amount,
-        isIncome: false, type: e.expenseType,
+        isIncome: false, type: e.expenseType, isLate: false,
       })),
     ];
     return all.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 10);
@@ -202,12 +209,11 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-6">
         <StatCard title="Total Income" value={formatINRAbbr(stats.totalIncome)} fullValue={formatINR(stats.totalIncome)} icon={IndianRupee} variant="income" subtitle="Tuition + Lunch" />
         <StatCard title="School Expenses" value={formatINRAbbr(schoolExpensesTotal)} fullValue={formatINR(schoolExpensesTotal)} icon={TrendingDown} variant="expense" />
         <StatCard title="Net Profit" value={formatINRAbbr(stats.netProfit)} fullValue={formatINR(stats.netProfit)} icon={BarChart3} variant={stats.netProfit >= 0 ? 'profit' : 'expense'} subtitle="School income − expenses" />
         <StatCard title="All Balances" value={formatINRAbbr(stats.totalBalance)} fullValue={formatINR(stats.totalBalance)} icon={Landmark} variant="balance" />
-        <StatCard title="Pending Fees" value={formatINRAbbr(stats.currentPending.remaining)} fullValue={formatINR(stats.currentPending.remaining)} icon={Clock} variant="pending" subtitle="This year" />
         <StatCard title="Gross Profit" value={formatINRAbbr(stats.grossProfit)} fullValue={formatINR(stats.grossProfit)} icon={TrendingUp} variant="cumulative" subtitle="Income − Fixed" />
         <div className="relative">
           <StatCard title="Projected Profit" value={formatINRAbbr(stats.projected)} fullValue={formatINR(stats.projected)} icon={TrendingUp} variant="profit" subtitle="By year end" />
@@ -239,7 +245,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* FIX 4: Financial Overview card */}
+      {/* Financial Overview */}
       <div className="rounded-lg border bg-card p-4">
         <h3 className="mb-3 text-sm font-semibold">💰 Financial Overview</h3>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -264,18 +270,60 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Current year: Tuition Fee Collection Progress */}
       <div className="rounded-lg border bg-card p-4">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-medium">Tuition Fee Collection Progress</span>
+          <span className="text-sm font-medium">Tuition Fee Collection — AY {currentYear?.label}</span>
           <span className="font-mono text-sm font-bold text-primary">
-            {formatINR(stats.currentPending.collected)} / {formatINR(stats.target)}
+            {formatINR(stats.tuitionCollected)} / {formatINR(stats.target)}
           </span>
         </div>
         <Progress value={stats.feeProgress} className="h-3" />
         <p className="mt-1 text-xs text-muted-foreground">
-          {stats.feeProgress}% collected • {formatINR(stats.currentPending.targetGap)} remaining
+          {stats.feeProgress}% collected • {formatINR(Math.max(0, stats.target - stats.tuitionCollected))} remaining
         </p>
       </div>
+
+      {/* Previous years: Pending Collections — separate progress bar per year */}
+      {stats.prevYearPending.length > 0 && (
+        <div className="rounded-lg border border-warning/30 bg-card p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-sm font-semibold text-warning">⏳ Previous Year Pending Collections</span>
+            <span className="font-mono text-sm font-bold text-warning">{formatINR(stats.prevPending)} total</span>
+          </div>
+          <div className="space-y-4">
+            {stats.prevYearPending.map(({ year, info }) => {
+              const collectPct = info.totalOwed > 0
+                ? Math.min(100, Math.round((info.collected / info.totalOwed) * 100))
+                : 0;
+              return (
+                <div key={year.id}>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-sm font-medium">AY {year.label}</span>
+                    <span className="font-mono text-sm font-bold text-warning">{formatINR(info.remaining)} pending</span>
+                  </div>
+                  <Progress value={collectPct} className="h-2.5 [&>div]:bg-warning" />
+                  <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+                    <span>{collectPct}% collected</span>
+                    <span>{formatINR(info.collected)} / {formatINR(info.totalOwed)}</span>
+                  </div>
+                  {info.carryForward > 0 && (
+                    <p className="mt-0.5 text-xs text-warning/80">
+                      Includes {formatINR(info.carryForward)} carry-forward from prior year
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button
+            className="mt-3 text-xs text-warning underline-offset-2 hover:underline"
+            onClick={() => navigate('/income')}
+          >
+            Record a payment →
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Button size="sm" className="gap-1.5 bg-income text-income-foreground hover:bg-income/90" onClick={() => setShowIncome(true)}>
