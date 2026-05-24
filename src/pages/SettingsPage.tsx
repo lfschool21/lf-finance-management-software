@@ -63,6 +63,7 @@ export default function SettingsPage() {
   const [yearStart, setYearStart] = useState('');
   const [yearEnd, setYearEnd] = useState('');
   const [yearTarget, setYearTarget] = useState('');
+  const [yearCarry, setYearCarry] = useState('');
   const [yearSaving, setYearSaving] = useState(false);
 
   // Recurring
@@ -132,7 +133,7 @@ export default function SettingsPage() {
 
   // Academic Year
   function openYearAdd() {
-    setEditYearId(null); setYearLabel(''); setYearStart(''); setYearEnd(''); setYearTarget('');
+    setEditYearId(null); setYearLabel(''); setYearStart(''); setYearEnd(''); setYearTarget(''); setYearCarry('');
     setShowYearModal(true);
   }
   function openYearEdit(id: string) {
@@ -142,6 +143,7 @@ export default function SettingsPage() {
     setYearStart(y.startDate.toISOString().split('T')[0]);
     setYearEnd(y.endDate.toISOString().split('T')[0]);
     setYearTarget(y.targetTuitionFees.toString());
+    setYearCarry((y.carryForwardFees || 0) > 0 ? (y.carryForwardFees || 0).toString() : '');
     setShowYearModal(true);
   }
   async function saveYear() {
@@ -151,11 +153,14 @@ export default function SettingsPage() {
       await academicYearsService.update(editYearId, {
         label: yearLabel, start_date: yearStart, end_date: yearEnd,
         target_tuition_fees: parseFloat(yearTarget) || 0,
+        carry_forward_fees: parseFloat(yearCarry) || 0,
       });
     } else {
       await academicYearsService.create({
         label: yearLabel, start_date: yearStart, end_date: yearEnd,
-        target_tuition_fees: parseFloat(yearTarget) || 0, status: 'active',
+        target_tuition_fees: parseFloat(yearTarget) || 0,
+        carry_forward_fees: parseFloat(yearCarry) || 0,
+        status: 'active',
       });
     }
     await refreshAcademicYears();
@@ -471,6 +476,10 @@ export default function SettingsPage() {
             <Input type="date" value={yearStart} onChange={(e) => setYearStart(e.target.value)} />
             <Input type="date" value={yearEnd} onChange={(e) => setYearEnd(e.target.value)} />
             <Input type="number" placeholder="Target tuition fees (₹)" value={yearTarget} onChange={(e) => setYearTarget(e.target.value)} />
+            <div>
+              <Input type="number" placeholder="Last year's remaining fees to collect (₹) — optional" value={yearCarry} onChange={(e) => setYearCarry(e.target.value)} />
+              <p className="mt-1 text-[11px] text-muted-foreground">Carry-forward: fees from a previous year still owed but not yet collected.</p>
+            </div>
             <Button onClick={saveYear} disabled={yearSaving} className="w-full">
               {yearSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {editYearId ? 'Update' : 'Add'}
             </Button>
