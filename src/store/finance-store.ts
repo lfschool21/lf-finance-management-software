@@ -101,6 +101,15 @@ export interface PendingRecurringItem {
   lastAmount: number;
 }
 
+export interface YearPendingInfo {
+  yearId: string;
+  totalOwed: number;       // targetTuitionFees + carryForwardFees
+  collected: number;       // direct + late-collection payments
+  remaining: number;       // totalOwed - collected (floored at 0)
+  targetGap: number;       // max(0, targetTuitionFees - collected)
+  carryForward: number;    // carryForwardFees value
+}
+
 export interface YearProfitBreakdown {
   totalIncome: number;
   fixedExpenses: number;
@@ -145,6 +154,8 @@ interface FinanceState {
   refreshAccounts: () => Promise<void>;
   refreshAcademicYears: () => Promise<void>;
   refreshRecurringTemplates: () => Promise<void>;
+  getPendingForYear: (yearId: string) => YearPendingInfo;
+  getAllPendingTotal: () => number;
 }
 
 export const useFinanceStore = create<FinanceState>((set, get) => ({
@@ -432,15 +443,54 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     const avgMonthlyExpense = currentSchoolExpenses / monthsElapsed;
     const projectedExpenses = currentSchoolExpenses + (avgMonthlyExpense * remainingMonths);
 
-    // Projected income = current + uncollected
-    const uncollected = Math.max(0, (year.targetTuitionFees || 0) - 
-      state.incomeEntries
-        .filter((i) => i.academicYearId === yearId && i.type === 'tuition')
-        .reduce((s, i) => s + i.amount, 0)
-    );
+    // Projected income = current + uncollected from target (carry-forward is already owed, not future income)
+    const pending = get().getPendingForYear(yearId);
+    const uncollected = Math.max(0, pending.targetGap);
     const projectedIncome = breakdown.totalIncome + uncollected;
 
     return projectedIncome - projectedExpenses;
+  },
+
+  /**
+   * Single source of truth for how much is still owed for a given academic year.
+   * Accounts for:
+   *   - tuition paid directly to this year
+   *   - late-collection payments that reference this year as the original year
+   *   - carryForwardFees (manually set)
+   */
+  getPendingForYear: (yearId: string): YearPendingInfo => {
+    const state = get();
+    const year = state.academicYears.find((y) => y.id === yearId);
+    if (!year) {
+      return { yearId, totalOwed: 0, collected: 0, remaining: 0, targetGap: 0, carryForward: 0 };
+    }
+    // Collect all tuition payments that count toward this year:
+    //   1. Direct entries booked to this year (not marked as late collection)
+    //   2. Late-collection entries whose originalYearId === this year
+    const collected = state.incomeEntries
+      .filter(
+        (i) =>
+          i.type === 'tuition' &&
+          (
+            (i.academicYearId === yearId && !i.isLateCollection) ||
+            (i.isLateCollection && i.originalYearId === yearId)
+          )
+      )
+      .reduce((s, i) => s + i.amount, 0);
+
+    const carryForward = year.carryForwardFees || 0;
+    const targetGap = Math.max(0, year.targetTuitionFees - collected);
+    const totalOwed = year.targetTuitionFees + carryForward;
+    const remaining = Math.max(0, totalOwed - collected);
+
+    return { yearId, totalOwed, collected, remaining, targetGap, carryForward };
+  },
+
+  getAllPendingTotal: () => {
+    const state = get();
+    return state.academicYears.reduce((sum, y) => {
+      return sum + get().getPendingForYear(y.id).remaining;
+    }, 0);
   },
 
   refreshAccounts: async () => {
