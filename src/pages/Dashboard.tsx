@@ -60,7 +60,7 @@ export default function Dashboard() {
   const {
     incomeEntries, expenseEntries, accounts, academicYears, currentYearId,
     transfers, getTotalBalance, getYearProfitBreakdown, getProjectedProfit,
-    pendingRecurringItems,
+    pendingRecurringItems, getPendingForYear,
   } = useFinanceStore();
   const navigate = useNavigate();
 
@@ -75,20 +75,17 @@ export default function Dashboard() {
     const breakdown = getYearProfitBreakdown(currentYearId);
     const projected = getProjectedProfit(currentYearId);
 
+    // Current year: only count direct (non-late) tuition entries for the progress bar
     const tuitionCollected = incomeEntries
-      .filter((i) => i.academicYearId === currentYearId && i.type === 'tuition')
+      .filter((i) => i.academicYearId === currentYearId && i.type === 'tuition' && !i.isLateCollection)
       .reduce((s, i) => s + i.amount, 0);
     const target = currentYear?.targetTuitionFees || 0;
     const feeProgress = target > 0 ? Math.round((tuitionCollected / target) * 100) : 0;
 
+    // Use the shared helper: pending across ALL previous years (excluding current)
     const prevPending = academicYears
       .filter((y) => y.id !== currentYearId)
-      .reduce((s, y) => {
-        const collected = incomeEntries
-          .filter((i) => i.academicYearId === y.id && i.type === 'tuition')
-          .reduce((sum, i) => sum + i.amount, 0);
-        return s + Math.max(0, y.targetTuitionFees - collected);
-      }, 0);
+      .reduce((s, y) => s + getPendingForYear(y.id).remaining, 0);
 
     const totalBalance = getTotalBalance();
 
@@ -96,6 +93,9 @@ export default function Dashboard() {
     const homeExpenses = expenseEntries
       .filter((e) => e.academicYearId === currentYearId && e.expenseType === 'home')
       .reduce((s, e) => s + e.amount, 0);
+
+    // Current year pending (target gap only — carry-forward is for past years)
+    const currentPending = getPendingForYear(currentYearId);
 
     // Projected breakdown values
     const year = currentYear;
@@ -115,11 +115,8 @@ export default function Dashboard() {
       const currentSchoolExpenses = breakdown.fixedExpenses + breakdown.extraExpenses;
       const avgMonthlyExpense = currentSchoolExpenses / monthsElapsed;
       projectedExpenses = currentSchoolExpenses + (avgMonthlyExpense * remainingMonths);
-      const uncollected = Math.max(0, (year.targetTuitionFees || 0) -
-        incomeEntries
-          .filter((i) => i.academicYearId === currentYearId && i.type === 'tuition')
-          .reduce((sum, i) => sum + i.amount, 0)
-      );
+      // Only project target gap as future income (carry-forward is past debt, not future revenue)
+      const uncollected = currentPending.targetGap;
       projectedIncome = breakdown.totalIncome + uncollected;
     }
 
@@ -134,8 +131,9 @@ export default function Dashboard() {
       homeExpenses,
       projectedIncome,
       projectedExpenses,
+      currentPending,
     };
-  }, [incomeEntries, expenseEntries, accounts, academicYears, currentYearId, currentYear, transfers, getTotalBalance, getYearProfitBreakdown, getProjectedProfit]);
+  }, [incomeEntries, expenseEntries, accounts, academicYears, currentYearId, currentYear, transfers, getTotalBalance, getYearProfitBreakdown, getProjectedProfit, getPendingForYear]);
 
   const monthlyData = useMemo(() => {
     const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
@@ -209,7 +207,7 @@ export default function Dashboard() {
         <StatCard title="School Expenses" value={formatINRAbbr(schoolExpensesTotal)} fullValue={formatINR(schoolExpensesTotal)} icon={TrendingDown} variant="expense" />
         <StatCard title="Net Profit" value={formatINRAbbr(stats.netProfit)} fullValue={formatINR(stats.netProfit)} icon={BarChart3} variant={stats.netProfit >= 0 ? 'profit' : 'expense'} subtitle="School income − expenses" />
         <StatCard title="All Balances" value={formatINRAbbr(stats.totalBalance)} fullValue={formatINR(stats.totalBalance)} icon={Landmark} variant="balance" />
-        <StatCard title="Pending Fees" value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionCollected))} fullValue={formatINR(Math.max(0, stats.target - stats.tuitionCollected))} icon={Clock} variant="pending" subtitle="This year" />
+        <StatCard title="Pending Fees" value={formatINRAbbr(stats.currentPending.remaining)} fullValue={formatINR(stats.currentPending.remaining)} icon={Clock} variant="pending" subtitle="This year" />
         <StatCard title="Gross Profit" value={formatINRAbbr(stats.grossProfit)} fullValue={formatINR(stats.grossProfit)} icon={TrendingUp} variant="cumulative" subtitle="Income − Fixed" />
         <div className="relative">
           <StatCard title="Projected Profit" value={formatINRAbbr(stats.projected)} fullValue={formatINR(stats.projected)} icon={TrendingUp} variant="profit" subtitle="By year end" />
@@ -270,12 +268,12 @@ export default function Dashboard() {
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-medium">Tuition Fee Collection Progress</span>
           <span className="font-mono text-sm font-bold text-primary">
-            {formatINR(stats.tuitionCollected)} / {formatINR(stats.target)}
+            {formatINR(stats.currentPending.collected)} / {formatINR(stats.target)}
           </span>
         </div>
         <Progress value={stats.feeProgress} className="h-3" />
         <p className="mt-1 text-xs text-muted-foreground">
-          {stats.feeProgress}% collected • {formatINR(Math.max(0, stats.target - stats.tuitionCollected))} remaining
+          {stats.feeProgress}% collected • {formatINR(stats.currentPending.targetGap)} remaining
         </p>
       </div>
 
