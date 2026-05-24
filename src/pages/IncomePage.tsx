@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, TrendingUp, UtensilsCrossed, Clock, IndianRupee, Pencil, Loader2 } from 'lucide-react';
+import { Plus, TrendingUp, UtensilsCrossed, Clock, IndianRupee, Pencil, Loader2, History } from 'lucide-react';
 import { useFinanceStore } from '@/store/finance-store';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { StatCard } from '@/components/StatCard';
@@ -25,6 +25,12 @@ export default function IncomePage() {
   const [targetValue, setTargetValue] = useState('');
   const [targetSaving, setTargetSaving] = useState(false);
 
+  // Edit carry-forward fees state
+  const [showCarryModal, setShowCarryModal] = useState(false);
+  const [carryYearId, setCarryYearId] = useState<string | null>(null);
+  const [carryValue, setCarryValue] = useState('');
+  const [carrySaving, setCarrySaving] = useState(false);
+
   const currentYear = academicYears.find((y) => y.id === currentYearId);
 
   const stats = useMemo(() => {
@@ -43,12 +49,14 @@ export default function IncomePage() {
         const collected = incomeEntries
           .filter((i) => i.academicYearId === y.id && i.type === 'tuition')
           .reduce((s, i) => s + i.amount, 0);
-        const remaining = Math.max(0, y.targetTuitionFees - collected);
+        const remainingFromTarget = Math.max(0, y.targetTuitionFees - collected);
+        const carryForward = y.carryForwardFees || 0;
+        const totalRemaining = remainingFromTarget + carryForward;
         const startYear = y.startDate.getFullYear();
         const yearsOverdue = new Date().getFullYear() - startYear - 1;
-        return { ...y, collected, remaining, yearsOverdue };
+        return { ...y, collected, remainingFromTarget, carryForward, totalRemaining, yearsOverdue };
       })
-      .filter((y) => y.remaining > 0);
+      .filter((y) => y.totalRemaining > 0);
   }, [academicYears, incomeEntries]);
 
   const filteredEntries = useMemo(() => {
@@ -94,6 +102,28 @@ export default function IncomePage() {
       toast({ title: 'Failed to update target', variant: 'destructive' });
     }
     setTargetSaving(false);
+  }
+
+  function openEditCarry(yearId: string, currentCarry: number) {
+    setCarryYearId(yearId);
+    setCarryValue(currentCarry > 0 ? currentCarry.toString() : '');
+    setShowCarryModal(true);
+  }
+
+  async function saveCarry() {
+    if (!carryYearId) return;
+    setCarrySaving(true);
+    try {
+      await academicYearsService.update(carryYearId, {
+        carry_forward_fees: parseFloat(carryValue) || 0,
+      });
+      await refreshAcademicYears();
+      toast({ title: '✅ Carry-forward fees updated' });
+      setShowCarryModal(false);
+    } catch {
+      toast({ title: 'Failed to update carry-forward fees', variant: 'destructive' });
+    }
+    setCarrySaving(false);
   }
 
   const feeProgress = stats.target > 0 ? Math.round((stats.tuitionTotal / stats.target) * 100) : 0;
@@ -192,15 +222,68 @@ export default function IncomePage() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-mono text-lg font-bold text-warning">{formatINR(y.remaining)}</p>
-                    <p className="text-xs text-muted-foreground">remaining</p>
+                    <p className="font-mono text-lg font-bold text-warning">{formatINR(y.totalRemaining)}</p>
+                    <p className="text-xs text-muted-foreground">total remaining</p>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" className="mt-3" onClick={() => openLatePayment(y.id)}>
-                  Record Late Payment
-                </Button>
+
+                {/* Breakdown if carry-forward exists */}
+                {y.carryForward > 0 && (
+                  <div className="mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs space-y-1">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>From this year's target</span>
+                      <span className="font-mono">{formatINR(y.remainingFromTarget)}</span>
+                    </div>
+                    <div className="flex justify-between text-warning">
+                      <span className="flex items-center gap-1">
+                        <History className="h-3 w-3" /> Last year's carry-forward
+                      </span>
+                      <span className="font-mono">{formatINR(y.carryForward)}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => openLatePayment(y.id)}>
+                    Record Late Payment
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="gap-1 text-muted-foreground"
+                    onClick={() => openEditCarry(y.id, y.carryForward)}
+                    title="Set last year's remaining fees carried forward"
+                  >
+                    <History className="h-3.5 w-3.5" />
+                    {y.carryForward > 0 ? 'Edit Carry-Forward' : 'Add Carry-Forward'}
+                  </Button>
+                </div>
               </div>
             ))
+          )}
+
+          {/* Allow setting carry-forward for years with no current gap (fully collected from target) */}
+          {academicYears.filter((y) => !pendingYears.find((p) => p.id === y.id)).length > 0 && (
+            <div className="rounded-lg border border-dashed bg-card/50 p-3">
+              <p className="mb-2 text-xs text-muted-foreground">
+                Add carry-forward fees for years that appear fully collected but have last-year balances still outstanding:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {academicYears
+                  .filter((y) => !pendingYears.find((p) => p.id === y.id))
+                  .map((y) => (
+                    <Button
+                      key={y.id}
+                      size="sm"
+                      variant="outline"
+                      className="gap-1 text-xs"
+                      onClick={() => openEditCarry(y.id, y.carryForwardFees || 0)}
+                    >
+                      <History className="h-3 w-3" /> AY {y.label}
+                    </Button>
+                  ))}
+              </div>
+            </div>
           )}
         </TabsContent>
       </Tabs>
@@ -229,6 +312,37 @@ export default function IncomePage() {
             <Button variant="outline" onClick={() => setShowTargetModal(false)} className="flex-1">Cancel</Button>
             <Button onClick={saveTarget} disabled={targetSaving} className="flex-1">
               {targetSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Carry-Forward Fees Modal */}
+      <Dialog open={showCarryModal} onOpenChange={setShowCarryModal}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Last Year's Remaining Fees</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Enter the amount still owed from last year that was not collected — this will appear as an
+            additional pending amount for AY {academicYears.find((y) => y.id === carryYearId)?.label}.
+            Set to 0 to clear it.
+          </p>
+          <Input
+            type="number"
+            placeholder="Carry-forward amount (₹)"
+            value={carryValue}
+            onChange={(e) => setCarryValue(e.target.value)}
+          />
+          {carryValue && (
+            <p className="text-xs text-muted-foreground">
+              {formatINR(parseFloat(carryValue) || 0)}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowCarryModal(false)} className="flex-1">Cancel</Button>
+            <Button onClick={saveCarry} disabled={carrySaving} className="flex-1">
+              {carrySaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save
             </Button>
           </div>
         </DialogContent>
