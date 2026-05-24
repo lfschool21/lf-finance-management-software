@@ -46,6 +46,7 @@ export interface AcademicYear {
   startDate: Date;
   endDate: Date;
   targetTuitionFees: number;
+  carryForwardFees: number;
   status: AcademicYearStatus;
 }
 
