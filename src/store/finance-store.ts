@@ -103,11 +103,11 @@ export interface PendingRecurringItem {
 
 export interface YearPendingInfo {
   yearId: string;
-  totalOwed: number;       // targetTuitionFees + carryForwardFees
-  collected: number;       // direct + late-collection payments
-  remaining: number;       // totalOwed - collected (floored at 0)
-  targetGap: number;       // max(0, targetTuitionFees - collected)
-  carryForward: number;    // carryForwardFees value
+  totalOwed: number;    // targetTuitionFees + carryForwardFees
+  collected: number;    // direct + late-collection payments attributed to this year
+  remaining: number;    // max(0, totalOwed - collected)
+  targetGap: number;    // max(0, targetTuitionFees - collected) — excludes carry-forward
+  carryForward: number; // carryForwardFees value
 }
 
 export interface YearProfitBreakdown {
@@ -379,9 +379,15 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     const state = get();
     const fixedCats = FIXED_EXPENSE_CATEGORIES as readonly string[];
 
-    // Income: regular + late collections attributed to this year
+    // Income rules:
+    //   INCLUDE: entries booked to this year that are NOT late collections
+    //   INCLUDE: late-collection entries whose originalYearId === this year (paid late, but belong here)
+    //   EXCLUDE: late-collection entries booked to this year but originalYearId !== this year
+    //            (those belong to the original year and must not inflate the booking year's income)
     const yearIncome = state.incomeEntries.filter(
-      (i) => i.academicYearId === yearId || (i.isLateCollection && i.originalYearId === yearId)
+      (i) =>
+        (i.academicYearId === yearId && !i.isLateCollection) ||
+        (i.isLateCollection && i.originalYearId === yearId)
     );
     const totalIncome = yearIncome.reduce((s, i) => s + i.amount, 0);
 
@@ -443,20 +449,20 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     const avgMonthlyExpense = currentSchoolExpenses / monthsElapsed;
     const projectedExpenses = currentSchoolExpenses + (avgMonthlyExpense * remainingMonths);
 
-    // Projected income = current + uncollected from target (carry-forward is already owed, not future income)
+    // Projected income = already collected + target gap still to collect this year
+    // (carry-forward is past debt recovery, not a revenue projection)
     const pending = get().getPendingForYear(yearId);
-    const uncollected = Math.max(0, pending.targetGap);
-    const projectedIncome = breakdown.totalIncome + uncollected;
+    const projectedIncome = breakdown.totalIncome + pending.targetGap;
 
     return projectedIncome - projectedExpenses;
   },
 
   /**
-   * Single source of truth for how much is still owed for a given academic year.
-   * Accounts for:
-   *   - tuition paid directly to this year
-   *   - late-collection payments that reference this year as the original year
-   *   - carryForwardFees (manually set)
+   * Single source of truth for how much is still owed for a given year.
+   * Counts:
+   *  - direct tuition entries booked to this year (not late collections)
+   *  - late-collection entries whose originalYearId === this year
+   *  - carryForwardFees (manually set balance from a previous year)
    */
   getPendingForYear: (yearId: string): YearPendingInfo => {
     const state = get();
@@ -464,9 +470,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     if (!year) {
       return { yearId, totalOwed: 0, collected: 0, remaining: 0, targetGap: 0, carryForward: 0 };
     }
-    // Collect all tuition payments that count toward this year:
-    //   1. Direct entries booked to this year (not marked as late collection)
-    //   2. Late-collection entries whose originalYearId === this year
+
     const collected = state.incomeEntries
       .filter(
         (i) =>
@@ -488,9 +492,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
 
   getAllPendingTotal: () => {
     const state = get();
-    return state.academicYears.reduce((sum, y) => {
-      return sum + get().getPendingForYear(y.id).remaining;
-    }, 0);
+    return state.academicYears.reduce((sum, y) => sum + get().getPendingForYear(y.id).remaining, 0);
   },
 
   refreshAccounts: async () => {
