@@ -38,7 +38,7 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 export default function ReportsPage() {
   const {
     incomeEntries, expenseEntries, academicYears, currentYearId,
-    getYearProfitBreakdown, getAllTimeCumulativeProfit,
+    getYearProfitBreakdown, getAllTimeCumulativeProfit, getPendingForYear,
   } = useFinanceStore();
 
   const [selectedYearId, setSelectedYearId] = useState(currentYearId);
@@ -127,6 +127,7 @@ export default function ReportsPage() {
         .filter((e) => e.academicYearId === y.id && e.expenseType === 'home')
         .reduce((s, e) => s + e.amount, 0);
       cumulative += b.netProfit;
+      const pending = getPendingForYear(y.id);
       return {
         year: y.label,
         income: b.totalIncome,
@@ -136,9 +137,13 @@ export default function ReportsPage() {
         overallPosition: b.netProfit - homeExp,
         cumulative,
         status: y.status,
+        pendingCollected: pending.collected,
+        pendingTarget: y.targetTuitionFees,
+        pendingRemaining: pending.remaining,
+        carryForward: pending.carryForward,
       };
     });
-  }, [academicYears, getYearProfitBreakdown, incomeEntries, expenseEntries]);
+  }, [academicYears, getYearProfitBreakdown, getPendingForYear, incomeEntries, expenseEntries]);
 
   // Compare years
   const comparison = useMemo(() => {
@@ -379,38 +384,39 @@ export default function ReportsPage() {
           </div>
 
           {/* Fee status */}
-          {selectedYear && (
-            <div className="rounded-lg border bg-card p-4">
-              <h3 className="mb-2 text-sm font-semibold">Fee Collection Status</h3>
-              {(() => {
-                const collected = incomeEntries
-                  .filter((i) => i.academicYearId === selectedYearId && i.type === 'tuition')
-                  .reduce((s, i) => s + i.amount, 0);
-                const target = selectedYear.targetTuitionFees;
-                const pct = target > 0 ? Math.round((collected / target) * 100) : 0;
-                return (
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Collected</span>
-                      <span className="font-mono font-medium text-income">{formatINR(collected)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Target</span>
-                      <span className="font-mono font-medium">{formatINR(target)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Pending</span>
-                      <span className="font-mono font-medium text-warning">{formatINR(Math.max(0, target - collected))}</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-muted">
-                      <div className="h-2 rounded-full bg-income transition-all" style={{ width: `${Math.min(100, pct)}%` }} />
-                    </div>
-                    <p className="text-xs text-muted-foreground">{pct}% collected</p>
+          {selectedYear && (() => {
+            const pending = getPendingForYear(selectedYearId);
+            const pct = pending.totalOwed > 0 ? Math.round((pending.collected / pending.totalOwed) * 100) : 0;
+            return (
+              <div className="rounded-lg border bg-card p-4">
+                <h3 className="mb-2 text-sm font-semibold">Fee Collection Status</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Collected</span>
+                    <span className="font-mono font-medium text-income">{formatINR(pending.collected)}</span>
                   </div>
-                );
-              })()}
-            </div>
-          )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Target (this year)</span>
+                    <span className="font-mono font-medium">{formatINR(selectedYear.targetTuitionFees)}</span>
+                  </div>
+                  {pending.carryForward > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Carry-Forward (prev year)</span>
+                      <span className="font-mono font-medium text-warning">{formatINR(pending.carryForward)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Pending</span>
+                    <span className="font-mono font-medium text-warning">{formatINR(pending.remaining)}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted">
+                    <div className="h-2 rounded-full bg-income transition-all" style={{ width: `${Math.min(100, pct)}%` }} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{pct}% collected</p>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* FIX 5: Two pie charts — School + Home */}
           <div className="grid gap-4 lg:grid-cols-2">
