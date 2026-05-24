@@ -26,6 +26,7 @@ function mapAcademicYear(row: academicYearsService.DbAcademicYear): AcademicYear
     startDate: toDate(row.start_date),
     endDate: toDate(row.end_date),
     targetTuitionFees: Number(row.target_tuition_fees),
+    carryForwardFees: Number(row.carry_forward_fees ?? 0),
     status: row.status,
   };
 }
