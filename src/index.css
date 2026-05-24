@@ -1,0 +1,131 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 210 50% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 210 50% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 50% 10%;
+
+    --primary: 210 52% 25%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 30% 93%;
+    --secondary-foreground: 210 52% 25%;
+
+    --muted: 220 14% 94%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 30% 93%;
+    --accent-foreground: 210 52% 25%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 20% 90%;
+    --input: 214 20% 90%;
+    --ring: 210 52% 25%;
+
+    --radius: 0.625rem;
+
+    /* Finance-specific tokens */
+    --income: 160 84% 39%;
+    --income-foreground: 0 0% 100%;
+    --expense: 0 84% 60%;
+    --expense-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 92% 15%;
+    --profit: 210 76% 50%;
+    --profit-foreground: 0 0% 100%;
+    --pending: 38 92% 50%;
+
+    --sidebar-background: 210 52% 15%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 210 40% 98%;
+    --sidebar-primary-foreground: 210 52% 15%;
+    --sidebar-accent: 210 52% 20%;
+    --sidebar-accent-foreground: 210 20% 90%;
+    --sidebar-border: 210 40% 22%;
+    --sidebar-ring: 210 76% 50%;
+
+    --font-sans: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  .dark {
+    --background: 240 20% 7%;
+    --foreground: 210 20% 92%;
+
+    --card: 240 18% 11%;
+    --card-foreground: 210 20% 92%;
+
+    --popover: 240 18% 11%;
+    --popover-foreground: 210 20% 92%;
+
+    --primary: 210 60% 55%;
+    --primary-foreground: 240 20% 7%;
+
+    --secondary: 240 14% 16%;
+    --secondary-foreground: 210 20% 88%;
+
+    --muted: 240 14% 16%;
+    --muted-foreground: 215 16% 55%;
+
+    --accent: 240 14% 16%;
+    --accent-foreground: 210 20% 88%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 14% 18%;
+    --input: 240 14% 18%;
+    --ring: 210 60% 55%;
+
+    --income: 160 60% 45%;
+    --income-foreground: 0 0% 100%;
+    --expense: 0 62% 50%;
+    --expense-foreground: 0 0% 100%;
+    --warning: 38 80% 55%;
+    --warning-foreground: 38 80% 10%;
+    --profit: 210 60% 55%;
+    --profit-foreground: 0 0% 100%;
+    --pending: 38 80% 55%;
+
+    --sidebar-background: 240 20% 8%;
+    --sidebar-foreground: 210 20% 85%;
+    --sidebar-primary: 210 60% 55%;
+    --sidebar-primary-foreground: 240 20% 7%;
+    --sidebar-accent: 240 18% 14%;
+    --sidebar-accent-foreground: 210 20% 85%;
+    --sidebar-border: 240 14% 15%;
+    --sidebar-ring: 210 60% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer utilities {
+  .font-mono-nums {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
