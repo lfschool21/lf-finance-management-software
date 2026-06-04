@@ -4,7 +4,8 @@ export interface DbIncomeEntry {
   id: string;
   user_id: string;
   academic_year_id: string;
-  type: 'tuition' | 'lunch';
+  /** Stores the category name directly, e.g. 'Tuition Fees', 'Lunch Fees', 'Donation / Grant' */
+  type: string;
   amount: number;
   date: string;
   account_id: string;
