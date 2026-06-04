@@ -11,9 +11,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useFinanceStore } from '@/store/finance-store';
 import { formatINR } from '@/utils/currency';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, X, IndianRupee, UtensilsCrossed } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Loader2, X } from 'lucide-react';
 import type { IncomeEntry } from '@/types/finance';
+import { INCOME_CATEGORIES, TUITION_CATEGORY } from '@/types/finance';
+
+const CUSTOM_VALUE = '__custom__';
 
 interface AddIncomeModalProps {
   isOpen: boolean;
@@ -24,7 +26,9 @@ interface AddIncomeModalProps {
 export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalProps) {
   const { accounts, academicYears, incomeEntries, currentYearId, addIncome, updateIncome, deleteIncome, getYearForDate } = useFinanceStore();
 
-  const [incomeType, setIncomeType] = useState<'tuition' | 'lunch'>('tuition');
+  const [category, setCategory] = useState<string>(INCOME_CATEGORIES[0]);
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [customCategory, setCustomCategory] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [accountId, setAccountId] = useState('');
@@ -38,8 +42,8 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const isEdit = !!editEntry;
-
   const activeAccounts = accounts.filter((a) => !a.isArchived);
+  const isTuition = (isCustomCategory ? customCategory.trim() : category) === TUITION_CATEGORY;
 
   const detectedYear = useMemo(() => {
     if (!date) return undefined;
@@ -53,7 +57,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
       const collected = incomeEntries
         .filter(
           (i) =>
-            i.type === 'tuition' &&
+            i.category === TUITION_CATEGORY &&
             (
               (i.academicYearId === y.id && !i.isLateCollection) ||
               (i.isLateCollection && i.originalYearId === y.id)
@@ -68,7 +72,10 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
   useEffect(() => {
     if (isOpen) {
       if (editEntry) {
-        setIncomeType(editEntry.type);
+        const isPreset = (INCOME_CATEGORIES as readonly string[]).includes(editEntry.category);
+        setIsCustomCategory(!isPreset);
+        setCategory(isPreset ? editEntry.category : INCOME_CATEGORIES[0]);
+        setCustomCategory(!isPreset ? editEntry.category : '');
         setAmount(editEntry.amount.toString());
         setDate(editEntry.date.toISOString().split('T')[0]);
         setAccountId(editEntry.accountId);
@@ -77,7 +84,9 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
         setNotes(editEntry.notes);
         setTags(editEntry.tags);
       } else {
-        setIncomeType('tuition');
+        setCategory(INCOME_CATEGORIES[0]);
+        setIsCustomCategory(false);
+        setCustomCategory('');
         setAmount('');
         setDate(new Date().toISOString().split('T')[0]);
         setAccountId(activeAccounts[0]?.id || '');
@@ -91,12 +100,24 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
     }
   }, [isOpen, editEntry]);
 
+  function handleCategorySelect(val: string) {
+    if (val === CUSTOM_VALUE) {
+      setIsCustomCategory(true);
+      setCustomCategory('');
+    } else {
+      setIsCustomCategory(false);
+      setCategory(val);
+    }
+  }
+
   function validate(): boolean {
     const errs: Record<string, string> = {};
     const amt = parseFloat(amount);
+    const finalCategory = isCustomCategory ? customCategory.trim() : category;
     if (!amount || isNaN(amt) || amt <= 0) errs.amount = 'Amount must be greater than zero';
     if (!date) errs.date = 'Date is required';
     if (!accountId) errs.accountId = 'Select an account';
+    if (!finalCategory) errs.category = 'Please select or enter a category';
     if (isLateCollection && !originalYearId) errs.originalYearId = 'Select the original year';
     if (!academicYearId) errs.year = 'No academic year found for this date';
     setErrors(errs);
@@ -112,9 +133,10 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
+    const finalCategory = isCustomCategory ? customCategory.trim() : category;
     try {
       const payload = {
-        type: incomeType as 'tuition' | 'lunch',
+        type: finalCategory,   // 'type' column in DB holds the category name
         amount: parseFloat(amount),
         date,
         academic_year_id: academicYearId,
@@ -164,37 +186,37 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Income Type Toggle */}
+
+            {/* Category */}
             <div>
-              <Label className="mb-2 block text-sm">Income Type</Label>
-              <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setIncomeType('tuition')}
-                  className={cn(
-                    'flex items-center justify-center gap-2 rounded-lg border-2 p-3 text-sm font-semibold transition-all',
-                    incomeType === 'tuition'
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border bg-card text-muted-foreground hover:border-primary/50'
-                  )}
-                >
-                  <IndianRupee className="h-4 w-4" />
-                  Tuition Fees
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIncomeType('lunch')}
-                  className={cn(
-                    'flex items-center justify-center gap-2 rounded-lg border-2 p-3 text-sm font-semibold transition-all',
-                    incomeType === 'lunch'
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border bg-card text-muted-foreground hover:border-primary/50'
-                  )}
-                >
-                  <UtensilsCrossed className="h-4 w-4" />
-                  Lunch Fees
-                </button>
-              </div>
+              <Label className="mb-1 block text-sm">Category</Label>
+              <Select
+                value={isCustomCategory ? CUSTOM_VALUE : category}
+                onValueChange={handleCategorySelect}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INCOME_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                  <SelectItem value={CUSTOM_VALUE}>Custom…</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {isCustomCategory && (
+                <Input
+                  className="mt-2"
+                  placeholder="Enter custom category name"
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                />
+              )}
+
+              {errors.category && (
+                <p className="mt-1 text-xs text-destructive">{errors.category}</p>
+              )}
             </div>
 
             {/* Amount */}
@@ -239,28 +261,32 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
               {errors.accountId && <p className="mt-1 text-xs text-destructive">{errors.accountId}</p>}
             </div>
 
-            {/* Late Collection */}
-            <div className="flex items-center justify-between rounded-lg border bg-card p-3">
-              <div>
-                <p className="text-sm font-medium">Late Collection</p>
-                <p className="text-xs text-muted-foreground">Payment from a previous year</p>
-              </div>
-              <Switch checked={isLateCollection} onCheckedChange={setIsLateCollection} />
-            </div>
+            {/* Late Collection — only shown for Tuition Fees category */}
+            {isTuition && (
+              <>
+                <div className="flex items-center justify-between rounded-lg border bg-card p-3">
+                  <div>
+                    <p className="text-sm font-medium">Late Collection</p>
+                    <p className="text-xs text-muted-foreground">Payment from a previous year</p>
+                  </div>
+                  <Switch checked={isLateCollection} onCheckedChange={setIsLateCollection} />
+                </div>
 
-            {isLateCollection && (
-              <div>
-                <Label>This payment belongs to:</Label>
-                <Select value={originalYearId} onValueChange={setOriginalYearId}>
-                  <SelectTrigger><SelectValue placeholder="Select original year" /></SelectTrigger>
-                  <SelectContent>
-                    {pendingYears.map((y) => (
-                      <SelectItem key={y.id} value={y.id}>AY {y.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.originalYearId && <p className="mt-1 text-xs text-destructive">{errors.originalYearId}</p>}
-              </div>
+                {isLateCollection && (
+                  <div>
+                    <Label>This payment belongs to:</Label>
+                    <Select value={originalYearId} onValueChange={setOriginalYearId}>
+                      <SelectTrigger><SelectValue placeholder="Select original year" /></SelectTrigger>
+                      <SelectContent>
+                        {pendingYears.map((y) => (
+                          <SelectItem key={y.id} value={y.id}>AY {y.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.originalYearId && <p className="mt-1 text-xs text-destructive">{errors.originalYearId}</p>}
+                  </div>
+                )}
+              </>
             )}
 
             {/* Notes */}
