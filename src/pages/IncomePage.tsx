@@ -12,7 +12,7 @@ import { AddIncomeModal } from '@/components/AddIncomeModal';
 import { toast } from '@/hooks/use-toast';
 import * as academicYearsService from '@/services/academicYears';
 import type { IncomeEntry } from '@/types/finance';
-import { TUITION_CATEGORY } from '@/types/finance';
+import { TUITION_CATEGORY, LUNCH_CATEGORY, OTHER_CATEGORY } from '@/types/finance';
 
 export default function IncomePage() {
   const { incomeEntries, academicYears, currentYearId, refreshAcademicYears, getPendingForYear } = useFinanceStore();
@@ -71,18 +71,14 @@ export default function IncomePage() {
       .filter((y) => y.totalRemaining > 0);
   }, [academicYears, incomeEntries, getPendingForYear]);
 
-  // Unique category list for the tab filter (current year only)
-  const categoryTabs = useMemo(() => {
-    const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
-    const cats = Array.from(new Set(yearIncome.map((i) => i.category))).sort();
-    return cats;
-  }, [incomeEntries, currentYearId]);
-
+  // Fixed tabs — no dynamic category discovery needed
   const filteredEntries = useMemo(() => {
     const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
     if (tab === 'all') return yearIncome;
-    if (tab === 'pending') return [];
-    return yearIncome.filter((i) => i.category === tab);
+    if (tab === 'tuition') return yearIncome.filter((i) => i.category === TUITION_CATEGORY);
+    if (tab === 'lunch')   return yearIncome.filter((i) => i.category === LUNCH_CATEGORY);
+    if (tab === 'other')   return yearIncome.filter((i) => i.category === OTHER_CATEGORY);
+    return [];
   }, [incomeEntries, currentYearId, tab]);
 
   function openAdd() {
@@ -196,9 +192,9 @@ export default function IncomePage() {
         <div className="overflow-x-auto">
           <TabsList className="w-max min-w-full sm:w-auto">
             <TabsTrigger value="all">All Income</TabsTrigger>
-            {categoryTabs.map((cat) => (
-              <TabsTrigger key={cat} value={cat}>{cat}</TabsTrigger>
-            ))}
+            <TabsTrigger value="tuition">Tuition Fees</TabsTrigger>
+            <TabsTrigger value="lunch">Lunch Fees</TabsTrigger>
+            <TabsTrigger value="other">Other Income</TabsTrigger>
             <TabsTrigger value="pending">
               Pending Collections
               {pendingYears.length > 0 && (
@@ -212,7 +208,6 @@ export default function IncomePage() {
 
         {/* All income tab */}
         <TabsContent value="all" className="mt-4 space-y-4">
-          {/* Category breakdown summary */}
           {stats.categoryBreakdown.length > 0 && (
             <div className="rounded-lg border bg-card p-4 space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Breakdown by Category</p>
@@ -227,15 +222,26 @@ export default function IncomePage() {
           <TransactionList entries={filteredEntries} onEdit={openEdit} showCategory />
         </TabsContent>
 
-        {/* Per-category tabs (dynamically generated) */}
-        {categoryTabs.map((cat) => (
-          <TabsContent key={cat} value={cat} className="mt-4">
-            <TransactionList
-              entries={incomeEntries.filter((i) => i.academicYearId === currentYearId && i.category === cat)}
-              onEdit={openEdit}
-            />
-          </TabsContent>
-        ))}
+        <TabsContent value="tuition" className="mt-4">
+          <TransactionList
+            entries={incomeEntries.filter((i) => i.academicYearId === currentYearId && i.category === TUITION_CATEGORY)}
+            onEdit={openEdit}
+          />
+        </TabsContent>
+
+        <TabsContent value="lunch" className="mt-4">
+          <TransactionList
+            entries={incomeEntries.filter((i) => i.academicYearId === currentYearId && i.category === LUNCH_CATEGORY)}
+            onEdit={openEdit}
+          />
+        </TabsContent>
+
+        <TabsContent value="other" className="mt-4">
+          <TransactionList
+            entries={incomeEntries.filter((i) => i.academicYearId === currentYearId && i.category === OTHER_CATEGORY)}
+            onEdit={openEdit}
+          />
+        </TabsContent>
 
         {/* Pending collections tab */}
         <TabsContent value="pending" className="mt-4 space-y-3">
