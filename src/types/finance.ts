@@ -1,6 +1,5 @@
 export type AcademicYearStatus = 'active' | 'closed' | 'pending_collections';
 export type AccountType = 'school_bank' | 'personal_bank' | 'cash';
-export type IncomeType = 'tuition' | 'lunch';
 export type ExpenseTopType = 'school' | 'home';
 export type TransferCategory = 'school_to_personal' | 'personal_to_school' | 'cash_deposit' | 'cash_withdrawal' | 'internal';
 export type RecurrenceInterval = 'monthly' | 'bimonthly' | 'quarterly';
@@ -37,6 +36,24 @@ export const FIXED_EXPENSE_CATEGORIES = [
   'Internet & Phone Bill',
 ] as const;
 
+/** All income categories. The type column in income_entries stores these values. */
+export const INCOME_CATEGORIES = [
+  'Tuition Fees',
+  'Lunch Fees',
+  'Donation / Grant',
+  'Government Aid',
+  'Event / Function Income',
+  'Late Fine',
+  'Bank Interest',
+  'Rental Income',
+  'Miscellaneous',
+] as const;
+
+export type IncomeCategory = (typeof INCOME_CATEGORIES)[number] | string;
+
+/** The category string that counts toward tuition fee progress tracking */
+export const TUITION_CATEGORY = 'Tuition Fees';
+
 export type SchoolExpenseCategory = (typeof SCHOOL_EXPENSE_CATEGORIES)[number];
 export type HomeExpenseCategory = (typeof HOME_EXPENSE_CATEGORIES)[number];
 
@@ -61,7 +78,8 @@ export interface Account {
 export interface IncomeEntry {
   id: string;
   academicYearId: string;
-  type: IncomeType;
+  /** Stores the income category name, e.g. 'Tuition Fees', 'Lunch Fees', 'Donation / Grant' */
+  category: string;
   amount: number;
   date: Date;
   accountId: string;
