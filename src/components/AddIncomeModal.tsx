@@ -11,11 +11,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useFinanceStore } from '@/store/finance-store';
 import { formatINR } from '@/utils/currency';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, X } from 'lucide-react';
+import { Loader2, X, IndianRupee, UtensilsCrossed, PlusCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { IncomeEntry } from '@/types/finance';
-import { INCOME_CATEGORIES, TUITION_CATEGORY } from '@/types/finance';
+import { TUITION_CATEGORY, LUNCH_CATEGORY, OTHER_CATEGORY } from '@/types/finance';
 
-const CUSTOM_VALUE = '__custom__';
+type IncomeType = 'tuition' | 'lunch' | 'other';
 
 interface AddIncomeModalProps {
   isOpen: boolean;
@@ -23,12 +24,16 @@ interface AddIncomeModalProps {
   editEntry?: IncomeEntry;
 }
 
+function categoryToType(cat: string): IncomeType {
+  if (cat === TUITION_CATEGORY) return 'tuition';
+  if (cat === LUNCH_CATEGORY) return 'lunch';
+  return 'other';
+}
+
 export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalProps) {
   const { accounts, academicYears, incomeEntries, currentYearId, addIncome, updateIncome, deleteIncome, getYearForDate } = useFinanceStore();
 
-  const [category, setCategory] = useState<string>(INCOME_CATEGORIES[0]);
-  const [isCustomCategory, setIsCustomCategory] = useState(false);
-  const [customCategory, setCustomCategory] = useState('');
+  const [incomeType, setIncomeType] = useState<IncomeType>('tuition');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [accountId, setAccountId] = useState('');
@@ -43,7 +48,6 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
 
   const isEdit = !!editEntry;
   const activeAccounts = accounts.filter((a) => !a.isArchived);
-  const isTuition = (isCustomCategory ? customCategory.trim() : category) === TUITION_CATEGORY;
 
   const detectedYear = useMemo(() => {
     if (!date) return undefined;
@@ -72,10 +76,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
   useEffect(() => {
     if (isOpen) {
       if (editEntry) {
-        const isPreset = (INCOME_CATEGORIES as readonly string[]).includes(editEntry.category);
-        setIsCustomCategory(!isPreset);
-        setCategory(isPreset ? editEntry.category : INCOME_CATEGORIES[0]);
-        setCustomCategory(!isPreset ? editEntry.category : '');
+        setIncomeType(categoryToType(editEntry.category));
         setAmount(editEntry.amount.toString());
         setDate(editEntry.date.toISOString().split('T')[0]);
         setAccountId(editEntry.accountId);
@@ -84,9 +85,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
         setNotes(editEntry.notes);
         setTags(editEntry.tags);
       } else {
-        setCategory(INCOME_CATEGORIES[0]);
-        setIsCustomCategory(false);
-        setCustomCategory('');
+        setIncomeType('tuition');
         setAmount('');
         setDate(new Date().toISOString().split('T')[0]);
         setAccountId(activeAccounts[0]?.id || '');
@@ -100,24 +99,18 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
     }
   }, [isOpen, editEntry]);
 
-  function handleCategorySelect(val: string) {
-    if (val === CUSTOM_VALUE) {
-      setIsCustomCategory(true);
-      setCustomCategory('');
-    } else {
-      setIsCustomCategory(false);
-      setCategory(val);
-    }
+  function resolvedCategory(): string {
+    if (incomeType === 'tuition') return TUITION_CATEGORY;
+    if (incomeType === 'lunch') return LUNCH_CATEGORY;
+    return OTHER_CATEGORY;
   }
 
   function validate(): boolean {
     const errs: Record<string, string> = {};
     const amt = parseFloat(amount);
-    const finalCategory = isCustomCategory ? customCategory.trim() : category;
     if (!amount || isNaN(amt) || amt <= 0) errs.amount = 'Amount must be greater than zero';
     if (!date) errs.date = 'Date is required';
     if (!accountId) errs.accountId = 'Select an account';
-    if (!finalCategory) errs.category = 'Please select or enter a category';
     if (isLateCollection && !originalYearId) errs.originalYearId = 'Select the original year';
     if (!academicYearId) errs.year = 'No academic year found for this date';
     setErrors(errs);
@@ -133,16 +126,15 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
-    const finalCategory = isCustomCategory ? customCategory.trim() : category;
     try {
       const payload = {
-        type: finalCategory,   // 'type' column in DB holds the category name
+        type: resolvedCategory(),
         amount: parseFloat(amount),
         date,
         academic_year_id: academicYearId,
         account_id: accountId,
-        is_late_collection: isLateCollection,
-        original_year_id: isLateCollection ? originalYearId : null,
+        is_late_collection: incomeType === 'tuition' ? isLateCollection : false,
+        original_year_id: incomeType === 'tuition' && isLateCollection ? originalYearId : null,
         notes: notes || null,
         tags: tags.length > 0 ? tags : null,
       };
@@ -187,36 +179,33 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
 
           <div className="space-y-4">
 
-            {/* Category */}
+            {/* Income Type — 3 toggle boxes */}
             <div>
-              <Label className="mb-1 block text-sm">Category</Label>
-              <Select
-                value={isCustomCategory ? CUSTOM_VALUE : category}
-                onValueChange={handleCategorySelect}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {INCOME_CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                  <SelectItem value={CUSTOM_VALUE}>Custom…</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {isCustomCategory && (
-                <Input
-                  className="mt-2"
-                  placeholder="Enter custom category name"
-                  value={customCategory}
-                  onChange={(e) => setCustomCategory(e.target.value)}
-                />
-              )}
-
-              {errors.category && (
-                <p className="mt-1 text-xs text-destructive">{errors.category}</p>
-              )}
+              <Label className="mb-2 block text-sm">Income Type</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { key: 'tuition', label: 'Tuition Fees', icon: IndianRupee },
+                    { key: 'lunch',   label: 'Lunch Fees',   icon: UtensilsCrossed },
+                    { key: 'other',   label: 'Other Income', icon: PlusCircle },
+                  ] as const
+                ).map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setIncomeType(key)}
+                    className={cn(
+                      'flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 px-2 py-3 text-xs font-semibold transition-all',
+                      incomeType === key
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-card text-muted-foreground hover:border-primary/50'
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Amount */}
@@ -261,8 +250,8 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
               {errors.accountId && <p className="mt-1 text-xs text-destructive">{errors.accountId}</p>}
             </div>
 
-            {/* Late Collection — only shown for Tuition Fees category */}
-            {isTuition && (
+            {/* Late Collection — only for Tuition Fees */}
+            {incomeType === 'tuition' && (
               <>
                 <div className="flex items-center justify-between rounded-lg border bg-card p-3">
                   <div>
