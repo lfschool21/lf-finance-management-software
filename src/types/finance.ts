@@ -36,23 +36,10 @@ export const FIXED_EXPENSE_CATEGORIES = [
   'Internet & Phone Bill',
 ] as const;
 
-/** All income categories. The type column in income_entries stores these values. */
-export const INCOME_CATEGORIES = [
-  'Tuition Fees',
-  'Lunch Fees',
-  'Donation / Grant',
-  'Government Aid',
-  'Event / Function Income',
-  'Late Fine',
-  'Bank Interest',
-  'Rental Income',
-  'Miscellaneous',
-] as const;
-
-export type IncomeCategory = (typeof INCOME_CATEGORIES)[number] | string;
-
-/** The category string that counts toward tuition fee progress tracking */
+/** The three income categories stored in the type column of income_entries */
 export const TUITION_CATEGORY = 'Tuition Fees';
+export const LUNCH_CATEGORY   = 'Lunch Fees';
+export const OTHER_CATEGORY   = 'Other Income';
 
 export type SchoolExpenseCategory = (typeof SCHOOL_EXPENSE_CATEGORIES)[number];
 export type HomeExpenseCategory = (typeof HOME_EXPENSE_CATEGORIES)[number];
