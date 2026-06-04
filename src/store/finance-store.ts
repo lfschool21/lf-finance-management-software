@@ -45,7 +45,7 @@ function mapIncome(row: incomeService.DbIncomeEntry): IncomeEntry {
   return {
     id: row.id,
     academicYearId: row.academic_year_id,
-    type: row.type,
+    category: row.type,   // 'type' column now stores the category name
     amount: Number(row.amount),
     date: toDate(row.date),
     accountId: row.account_id,
@@ -474,7 +474,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     const collected = state.incomeEntries
       .filter(
         (i) =>
-          i.type === 'tuition' &&
+          i.category === 'Tuition Fees' &&
           (
             (i.academicYearId === yearId && !i.isLateCollection) ||
             (i.isLateCollection && i.originalYearId === yearId)
