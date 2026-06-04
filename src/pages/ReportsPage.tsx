@@ -111,7 +111,7 @@ export default function ReportsPage() {
     const categories = Array.from(catMap.entries()).map(([c, a]) => ({ category: c, amount: a })).sort((a, b) => b.amount - a.amount);
 
     const transactions = [
-      ...monthIncome.map((i) => ({ id: i.id, date: i.date, label: i.type === 'tuition' ? 'Tuition' : 'Lunch', amount: i.amount, isIncome: true })),
+      ...monthIncome.map((i) => ({ id: i.id, date: i.date, label: i.category, amount: i.amount, isIncome: true })),
       ...monthExpenses.map((e) => ({ id: e.id, date: e.date, label: e.category, amount: e.amount, isIncome: false })),
     ].sort((a, b) => b.date.getTime() - a.date.getTime());
 
@@ -206,7 +206,7 @@ export default function ReportsPage() {
     const rows = [
       ['Date', 'Type', 'Category', 'Amount', 'Description', 'Account'],
       ...incomeEntries.map((i) => [
-        i.date.toISOString().split('T')[0], 'Income', i.type, i.amount.toString(), i.notes, '',
+        i.date.toISOString().split('T')[0], 'Income', i.category, i.amount.toString(), i.notes, '',
       ]),
       ...expenseEntries.map((e) => [
         e.date.toISOString().split('T')[0], e.expenseType, e.category, e.amount.toString(), e.description, '',
