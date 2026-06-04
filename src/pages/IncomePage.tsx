@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, TrendingUp, UtensilsCrossed, Clock, IndianRupee, Pencil, Loader2, History } from 'lucide-react';
+import { Plus, TrendingUp, Clock, IndianRupee, Pencil, Loader2, History } from 'lucide-react';
 import { useFinanceStore } from '@/store/finance-store';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { StatCard } from '@/components/StatCard';
@@ -12,20 +12,19 @@ import { AddIncomeModal } from '@/components/AddIncomeModal';
 import { toast } from '@/hooks/use-toast';
 import * as academicYearsService from '@/services/academicYears';
 import type { IncomeEntry } from '@/types/finance';
+import { TUITION_CATEGORY } from '@/types/finance';
 
 export default function IncomePage() {
   const { incomeEntries, academicYears, currentYearId, refreshAcademicYears, getPendingForYear } = useFinanceStore();
-  const [tab, setTab] = useState('tuition');
+  const [tab, setTab] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [editEntry, setEditEntry] = useState<IncomeEntry | undefined>();
   const [lateYearId, setLateYearId] = useState<string | undefined>();
 
-  // Edit target state
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [targetValue, setTargetValue] = useState('');
   const [targetSaving, setTargetSaving] = useState(false);
 
-  // Edit carry-forward fees state
   const [showCarryModal, setShowCarryModal] = useState(false);
   const [carryYearId, setCarryYearId] = useState<string | null>(null);
   const [carryValue, setCarryValue] = useState('');
@@ -34,16 +33,23 @@ export default function IncomePage() {
   const currentYear = academicYears.find((y) => y.id === currentYearId);
 
   const stats = useMemo(() => {
-    // Exclude late collections (they belong to a previous year) from this year's progress
     const yearIncome = incomeEntries.filter(
       (i) => i.academicYearId === currentYearId && !i.isLateCollection
     );
-    const tuition = yearIncome.filter((i) => i.type === 'tuition');
-    const lunch = yearIncome.filter((i) => i.type === 'lunch');
-    const tuitionTotal = tuition.reduce((s, i) => s + i.amount, 0);
-    const lunchTotal = lunch.reduce((s, i) => s + i.amount, 0);
+    const tuitionTotal = yearIncome
+      .filter((i) => i.category === TUITION_CATEGORY)
+      .reduce((s, i) => s + i.amount, 0);
+    const totalIncome = yearIncome.reduce((s, i) => s + i.amount, 0);
     const target = currentYear?.targetTuitionFees || 0;
-    return { tuitionTotal, lunchTotal, target, tuition, lunch };
+
+    // Build per-category breakdown for the summary tab
+    const catMap = new Map<string, number>();
+    yearIncome.forEach((i) => catMap.set(i.category, (catMap.get(i.category) || 0) + i.amount));
+    const categoryBreakdown = Array.from(catMap.entries())
+      .map(([cat, amount]) => ({ cat, amount }))
+      .sort((a, b) => b.amount - a.amount);
+
+    return { tuitionTotal, totalIncome, target, categoryBreakdown };
   }, [incomeEntries, currentYearId, currentYear]);
 
   const pendingYears = useMemo(() => {
@@ -65,11 +71,18 @@ export default function IncomePage() {
       .filter((y) => y.totalRemaining > 0);
   }, [academicYears, incomeEntries, getPendingForYear]);
 
+  // Unique category list for the tab filter (current year only)
+  const categoryTabs = useMemo(() => {
+    const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
+    const cats = Array.from(new Set(yearIncome.map((i) => i.category))).sort();
+    return cats;
+  }, [incomeEntries, currentYearId]);
+
   const filteredEntries = useMemo(() => {
     const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
-    if (tab === 'tuition') return yearIncome.filter((i) => i.type === 'tuition');
-    if (tab === 'lunch') return yearIncome.filter((i) => i.type === 'lunch');
-    return [];
+    if (tab === 'all') return yearIncome;
+    if (tab === 'pending') return [];
+    return yearIncome.filter((i) => i.category === tab);
   }, [incomeEntries, currentYearId, tab]);
 
   function openAdd() {
@@ -147,14 +160,14 @@ export default function IncomePage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard title="Tuition Collected" value={formatINRAbbr(stats.tuitionTotal)} fullValue={formatINR(stats.tuitionTotal)} icon={IndianRupee} variant="income" />
-        <StatCard title="Lunch Collected" value={formatINRAbbr(stats.lunchTotal)} fullValue={formatINR(stats.lunchTotal)} icon={UtensilsCrossed} variant="income" />
-        <StatCard title="Target" value={formatINRAbbr(stats.target)} fullValue={formatINR(stats.target)} icon={TrendingUp} variant="balance" />
+        <StatCard title="Total Income" value={formatINRAbbr(stats.totalIncome)} fullValue={formatINR(stats.totalIncome)} icon={TrendingUp} variant="income" />
+        <StatCard title="Fee Target" value={formatINRAbbr(stats.target)} fullValue={formatINR(stats.target)} icon={TrendingUp} variant="balance" />
         <StatCard title="Remaining" value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionTotal))} fullValue={formatINR(Math.max(0, stats.target - stats.tuitionTotal))} icon={Clock} variant="pending" />
       </div>
 
-      {/* Fee progress bar with edit target button */}
+      {/* Tuition fee progress bar */}
       <div className="rounded-lg border bg-card p-4">
         <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm font-medium">Tuition Fee Collection Progress</span>
@@ -180,27 +193,51 @@ export default function IncomePage() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="tuition">Tuition Fees</TabsTrigger>
-          <TabsTrigger value="lunch">Lunch Fees</TabsTrigger>
-          <TabsTrigger value="pending">
-            Pending Collections
-            {pendingYears.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-warning px-1.5 py-0.5 text-[10px] font-bold text-warning-foreground">
-                {pendingYears.length}
-              </span>
-            )}
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto">
+          <TabsList className="w-max min-w-full sm:w-auto">
+            <TabsTrigger value="all">All Income</TabsTrigger>
+            {categoryTabs.map((cat) => (
+              <TabsTrigger key={cat} value={cat}>{cat}</TabsTrigger>
+            ))}
+            <TabsTrigger value="pending">
+              Pending Collections
+              {pendingYears.length > 0 && (
+                <span className="ml-1.5 rounded-full bg-warning px-1.5 py-0.5 text-[10px] font-bold text-warning-foreground">
+                  {pendingYears.length}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        <TabsContent value="tuition" className="mt-4">
-          <TransactionList entries={filteredEntries} onEdit={openEdit} />
+        {/* All income tab */}
+        <TabsContent value="all" className="mt-4 space-y-4">
+          {/* Category breakdown summary */}
+          {stats.categoryBreakdown.length > 0 && (
+            <div className="rounded-lg border bg-card p-4 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Breakdown by Category</p>
+              {stats.categoryBreakdown.map(({ cat, amount }) => (
+                <div key={cat} className="flex items-center justify-between text-sm">
+                  <span className="text-fit">{cat}</span>
+                  <span className="money-fit font-mono font-semibold text-income">{formatINR(amount)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <TransactionList entries={filteredEntries} onEdit={openEdit} showCategory />
         </TabsContent>
 
-        <TabsContent value="lunch" className="mt-4">
-          <TransactionList entries={filteredEntries} onEdit={openEdit} />
-        </TabsContent>
+        {/* Per-category tabs (dynamically generated) */}
+        {categoryTabs.map((cat) => (
+          <TabsContent key={cat} value={cat} className="mt-4">
+            <TransactionList
+              entries={incomeEntries.filter((i) => i.academicYearId === currentYearId && i.category === cat)}
+              onEdit={openEdit}
+            />
+          </TabsContent>
+        ))}
 
+        {/* Pending collections tab */}
         <TabsContent value="pending" className="mt-4 space-y-3">
           {pendingYears.length === 0 ? (
             <EmptyState message="No pending collections! All fees are up to date." />
@@ -237,20 +274,13 @@ export default function IncomePage() {
                     </div>
                   </div>
 
-                  {/* Collection progress bar */}
                   <div className="mt-3">
                     <div className="h-2 rounded-full bg-muted">
-                      <div
-                        className="h-2 rounded-full bg-income transition-all"
-                        style={{ width: `${collectProgress}%` }}
-                      />
+                      <div className="h-2 rounded-full bg-income transition-all" style={{ width: `${collectProgress}%` }} />
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {collectProgress}% collected
-                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">{collectProgress}% collected</p>
                   </div>
 
-                  {/* Breakdown: target gap vs carry-forward */}
                   {y.carryForward > 0 && (
                     <div className="mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs space-y-1">
                       <div className="flex flex-col gap-1 text-muted-foreground min-[420px]:flex-row min-[420px]:justify-between">
@@ -275,7 +305,6 @@ export default function IncomePage() {
                       variant="ghost"
                       className="gap-1 text-muted-foreground"
                       onClick={() => openEditCarry(y.id, y.carryForward)}
-                      title="Set last year's remaining fees carried forward"
                     >
                       <History className="h-3.5 w-3.5" />
                       {y.carryForward > 0 ? 'Edit Carry-Forward' : 'Add Carry-Forward'}
@@ -286,7 +315,6 @@ export default function IncomePage() {
             })
           )}
 
-          {/* Allow setting carry-forward for years with no current gap (fully collected from target) */}
           {academicYears.filter((y) => !pendingYears.find((p) => p.id === y.id)).length > 0 && (
             <div className="rounded-lg border border-dashed bg-card/50 p-3">
               <p className="mb-2 text-xs text-muted-foreground">
@@ -328,9 +356,7 @@ export default function IncomePage() {
             onChange={(e) => setTargetValue(e.target.value)}
           />
           {targetValue && (
-            <p className="text-xs text-muted-foreground">
-              {formatINR(parseFloat(targetValue) || 0)}
-            </p>
+            <p className="text-xs text-muted-foreground">{formatINR(parseFloat(targetValue) || 0)}</p>
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowTargetModal(false)} className="flex-1">Cancel</Button>
@@ -359,9 +385,7 @@ export default function IncomePage() {
             onChange={(e) => setCarryValue(e.target.value)}
           />
           {carryValue && (
-            <p className="text-xs text-muted-foreground">
-              {formatINR(parseFloat(carryValue) || 0)}
-            </p>
+            <p className="text-xs text-muted-foreground">{formatINR(parseFloat(carryValue) || 0)}</p>
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowCarryModal(false)} className="flex-1">Cancel</Button>
@@ -378,9 +402,11 @@ export default function IncomePage() {
 function TransactionList({
   entries,
   onEdit,
+  showCategory = false,
 }: {
   entries: IncomeEntry[];
   onEdit: (entry: IncomeEntry) => void;
+  showCategory?: boolean;
 }) {
   if (entries.length === 0) return <EmptyState message="No entries yet. Add your first one!" />;
 
@@ -394,6 +420,9 @@ function TransactionList({
           onClick={() => onEdit(entry)}
         >
           <div className="min-w-0 flex-1">
+            {showCategory && (
+              <p className="text-[11px] font-medium text-muted-foreground">{entry.category}</p>
+            )}
             <p className="text-fit text-sm font-medium">{entry.notes || 'No description'}</p>
             <p className="text-xs text-muted-foreground">
               {entry.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
