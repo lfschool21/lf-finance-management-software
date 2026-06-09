@@ -81,11 +81,11 @@ export default function SearchPage() {
     // Income entries
     if (typeFilters.has('income')) {
       incomeEntries.forEach((i) => {
-        const matchText = !hasQuery || [i.type, i.notes, ...(i.tags || [])].some((s) => (s || '').toLowerCase().includes(q));
+        const matchText = !hasQuery || [i.category, i.notes, ...(i.tags || [])].some((s) => (s || '').toLowerCase().includes(q));
         if (!matchText) return;
         items.push({
           id: i.id, date: i.date,
-          label: i.type === 'tuition' ? 'Tuition Fees' : 'Lunch Fees',
+          label: i.isLateCollection ? `Late Collection (${i.category})` : i.category,
           desc: i.notes, amount: i.amount,
           type: 'income', raw: i,
         });
