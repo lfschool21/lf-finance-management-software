@@ -87,7 +87,7 @@ export default function BankBalancesPage() {
     const income = incomeEntries.map((entry) => ({
       id: `income-${entry.id}`,
       date: entry.date,
-      title: entry.type === 'tuition' ? 'Tuition Fees' : 'Lunch Fees',
+      title: entry.isLateCollection ? `Late Collection (${entry.category})` : entry.category,
       detail: getAccountName(entry.accountId),
       amount: entry.amount,
       direction: 'in' as const,
