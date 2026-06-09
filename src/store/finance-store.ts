@@ -41,15 +41,23 @@ function mapAccount(row: accountsService.DbAccount): Account {
   };
 }
 
+/** Translate DB enum stored in the type column to a display category name */
+function dbTypeToCategory(dbType: string): string {
+  if (dbType === 'tuition') return 'Tuition Fees';
+  if (dbType === 'lunch')   return 'Lunch Fees';
+  if (dbType === 'other')   return 'Other Income';
+  return dbType; // pass through if already a display name (legacy rows)
+}
+
 function mapIncome(row: incomeService.DbIncomeEntry): IncomeEntry {
   return {
     id: row.id,
     academicYearId: row.academic_year_id,
-    category: row.type,   // 'type' column now stores the category name
+    category: dbTypeToCategory(row.type),  // normalise DB enum → display name
     amount: Number(row.amount),
     date: toDate(row.date),
     accountId: row.account_id,
-    isLateCollection: row.is_late_collection,
+    isLateCollection: row.is_late_collection ?? false,
     originalYearId: row.original_year_id,
     notes: row.notes || '',
     tags: row.tags || [],
