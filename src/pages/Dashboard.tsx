@@ -27,6 +27,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useFinanceStore } from '@/store/finance-store';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
+import { TUITION_CATEGORY } from '@/types/finance';
 import { StatCard } from '@/components/StatCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -77,7 +78,7 @@ export default function Dashboard() {
 
     // Current year: direct (non-late) tuition only — for the progress bar denominator
     const tuitionCollected = incomeEntries
-      .filter((i) => i.academicYearId === currentYearId && i.type === 'tuition' && !i.isLateCollection)
+      .filter((i) => i.academicYearId === currentYearId && i.category === TUITION_CATEGORY && !i.isLateCollection)
       .reduce((s, i) => s + i.amount, 0);
     const target = currentYear?.targetTuitionFees || 0;
     const feeProgress = target > 0 ? Math.round((tuitionCollected / target) * 100) : 0;
@@ -162,7 +163,7 @@ export default function Dashboard() {
         id: i.id, date: i.date,
         category: i.isLateCollection
           ? `Late Collection (prev year)`
-          : i.type === 'tuition' ? 'Tuition Fees' : 'Lunch Fees',
+          : i.category,
         amount: i.amount, isIncome: true, type: null as string | null,
         isLate: i.isLateCollection,
       })),
