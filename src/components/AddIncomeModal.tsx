@@ -99,10 +99,9 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
     }
   }, [isOpen, editEntry]);
 
+  /** Returns the DB enum value for the selected income type */
   function resolvedCategory(): string {
-    if (incomeType === 'tuition') return TUITION_CATEGORY;
-    if (incomeType === 'lunch') return LUNCH_CATEGORY;
-    return OTHER_CATEGORY;
+    return incomeType; // 'tuition' | 'lunch' | 'other' — matches DB CHECK constraint
   }
 
   function validate(): boolean {
