@@ -3,6 +3,8 @@ export type AccountType = 'school_bank' | 'personal_bank' | 'cash';
 export type ExpenseTopType = 'school' | 'home';
 export type TransferCategory = 'school_to_personal' | 'personal_to_school' | 'cash_deposit' | 'cash_withdrawal' | 'internal';
 export type RecurrenceInterval = 'monthly' | 'bimonthly' | 'quarterly';
+export type IncomeDbType = 'tuition' | 'lunch' | 'other';
+export type RecoverableStatus = 'outstanding' | 'partially_recovered' | 'recovered';
 
 export const SCHOOL_EXPENSE_CATEGORIES = [
   'Salary & Wages',
@@ -81,6 +83,7 @@ export interface ExpenseEntry {
   academicYearId: string;
   expenseType: ExpenseTopType;
   category: string;
+  subCategory: string;
   amount: number;
   date: Date;
   accountId: string;
@@ -108,6 +111,24 @@ export interface RecurringTemplate {
   recurrenceInterval: RecurrenceInterval;
   lastGeneratedDate: Date | null;
   isActive: boolean;
+}
+
+export interface Recoverable {
+  id: string;
+  partyName: string;
+  originalAmount: number;
+  dateGiven: Date;
+  sourceAccountId: string;
+  notes: string;
+}
+
+export interface RecoverableRepayment {
+  id: string;
+  recoverableId: string;
+  amount: number;
+  date: Date;
+  accountId: string;
+  notes: string;
 }
 
 export interface PendingCollection {

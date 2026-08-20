@@ -26,8 +26,17 @@ export default function LoginPage() {
     }
 
     // Check if setup is complete
-    const { data: accounts } = await supabase.from('accounts').select('id').limit(1);
-    if (!accounts || accounts.length === 0) {
+    const [accountsResult, yearsResult] = await Promise.all([
+      supabase.from('accounts').select('id').limit(1),
+      supabase.from('academic_years').select('id').limit(1),
+    ]);
+    const setupError = accountsResult.error || yearsResult.error;
+    if (setupError) {
+      setError(setupError.message);
+      setLoading(false);
+      return;
+    }
+    if (!accountsResult.data?.length || !yearsResult.data?.length) {
       navigate('/setup', { replace: true });
     } else {
       navigate('/', { replace: true });
@@ -50,8 +59,9 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Email</label>
+            <label htmlFor="login-email" className="text-sm font-medium">Email</label>
             <Input
+              id="login-email"
               type="email"
               placeholder="you@example.com"
               value={email}
@@ -60,8 +70,9 @@ export default function LoginPage() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Password</label>
+            <label htmlFor="login-password" className="text-sm font-medium">Password</label>
             <Input
+              id="login-password"
               type="password"
               placeholder="••••••••"
               value={password}

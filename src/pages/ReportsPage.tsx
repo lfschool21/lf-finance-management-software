@@ -24,8 +24,8 @@ import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FIXED_EXPENSE_CATEGORIES } from '@/types/finance';
 import { toast } from '@/hooks/use-toast';
+import { dateKey, getIncomeBreakdown, incomeSource, INCOME_SOURCE_LABELS } from '@/lib/finance-domain';
 
 const COLORS = [
   'hsl(210, 52%, 25%)', 'hsl(160, 84%, 39%)', 'hsl(0, 84%, 60%)',
@@ -33,11 +33,9 @@ const COLORS = [
   'hsl(330, 70%, 50%)', 'hsl(60, 80%, 45%)',
 ];
 
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 export default function ReportsPage() {
   const {
-    incomeEntries, expenseEntries, academicYears, currentYearId,
+    incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments, accounts, academicYears, currentYearId,
     getYearProfitBreakdown, getAllTimeCumulativeProfit, getPendingForYear,
   } = useFinanceStore();
 
@@ -51,6 +49,7 @@ export default function ReportsPage() {
 
   const selectedYear = academicYears.find((y) => y.id === selectedYearId);
   const breakdown = useMemo(() => getYearProfitBreakdown(selectedYearId), [selectedYearId, getYearProfitBreakdown, incomeEntries, expenseEntries]);
+  const yearlyIncomeBreakdown = useMemo(() => getIncomeBreakdown(incomeEntries.filter((entry) => entry.academicYearId === selectedYearId)), [incomeEntries, selectedYearId]);
 
   const schoolCategoryBreakdown = useMemo(() => {
     const map = new Map<string, number>();
@@ -115,13 +114,13 @@ export default function ReportsPage() {
       ...monthExpenses.map((e) => ({ id: e.id, date: e.date, label: e.category, amount: e.amount, isIncome: false })),
     ].sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    return { income, school, home, schoolProfit: income - school, net: income - school - home, categories, transactions };
+    return { income, incomeBreakdown: getIncomeBreakdown(monthIncome), school, home, schoolProfit: income - school, net: income - school - home, categories, transactions };
   }, [selectedMonth, incomeEntries, expenseEntries]);
 
   // All-time data
   const allYearsData = useMemo(() => {
     let cumulative = 0;
-    return academicYears.map((y) => {
+    return [...academicYears].sort((a, b) => a.startDate.getTime() - b.startDate.getTime()).map((y) => {
       const b = getYearProfitBreakdown(y.id);
       const homeExp = expenseEntries
         .filter((e) => e.academicYearId === y.id && e.expenseType === 'home')
@@ -178,16 +177,17 @@ export default function ReportsPage() {
     const school = yearExpenses.filter((e) => e.expenseType === 'school').reduce((s, e) => s + e.amount, 0);
     const home = yearExpenses.filter((e) => e.expenseType === 'home').reduce((s, e) => s + e.amount, 0);
 
-    const monthlyMap = new Map<number, number>();
+    const monthlyMap = new Map<string, { label: string; amount: number }>();
     yearExpenses.filter((e) => e.expenseType === 'school').forEach((e) => {
-      const m = e.date.getMonth();
-      monthlyMap.set(m, (monthlyMap.get(m) || 0) + e.amount);
+      const key = `${e.date.getFullYear()}-${String(e.date.getMonth() + 1).padStart(2, '0')}`;
+      const current = monthlyMap.get(key);
+      monthlyMap.set(key, { label: e.date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }), amount: (current?.amount || 0) + e.amount });
     });
     const monthlyTrend = Array.from(monthlyMap.entries())
-      .map(([m, amount]) => ({ month: MONTH_NAMES[m], amount }))
-      .sort((a, b) => MONTH_NAMES.indexOf(a.month) - MONTH_NAMES.indexOf(b.month));
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, value]) => ({ month: value.label, amount: value.amount }));
 
-    const monthlyAmounts = Array.from(monthlyMap.values());
+    const monthlyAmounts = Array.from(monthlyMap.values()).map((value) => value.amount);
     const highest = monthlyAmounts.length > 0 ? Math.max(...monthlyAmounts) : 0;
     const lowest = monthlyAmounts.length > 0 ? Math.min(...monthlyAmounts) : 0;
     const average = monthlyAmounts.length > 0 ? monthlyAmounts.reduce((s, v) => s + v, 0) / monthlyAmounts.length : 0;
@@ -203,16 +203,22 @@ export default function ReportsPage() {
   }, [expenseEntries, selectedYearId]);
 
   const handleExportCSV = useCallback(() => {
+    const accountName = (id: string) => accounts.find((account) => account.id === id)?.name || 'Unknown Account';
+    const yearName = (id: string | null) => academicYears.find((year) => year.id === id)?.label || '';
     const rows = [
-      ['Date', 'Type', 'Category', 'Amount', 'Description', 'Account'],
+      ['Date', 'Transaction Type', 'Category', 'Amount', 'Description', 'Account', 'Related Account / Year'],
       ...incomeEntries.map((i) => [
-        i.date.toISOString().split('T')[0], 'Income', i.category, i.amount.toString(), i.notes, '',
+        dateKey(i.date), 'Income', INCOME_SOURCE_LABELS[incomeSource(i)], i.amount.toString(), i.notes, accountName(i.accountId), i.isLateCollection ? `Original AY ${yearName(i.originalYearId)}` : '',
       ]),
       ...expenseEntries.map((e) => [
-        e.date.toISOString().split('T')[0], e.expenseType, e.category, e.amount.toString(), e.description, '',
+        dateKey(e.date), e.expenseType === 'school' ? 'School Expense' : 'Home Expense', e.subCategory ? `${e.category}: ${e.subCategory}` : e.category, e.amount.toString(), e.description, accountName(e.accountId), '',
       ]),
+      ...transfers.map((t) => [dateKey(t.date), 'Transfer', t.category, t.amount.toString(), t.notes, accountName(t.fromAccountId), accountName(t.toAccountId)]),
+      ...recoverables.map((r) => [dateKey(r.dateGiven), 'Recoverable Advance', r.partyName, r.originalAmount.toString(), r.notes, accountName(r.sourceAccountId), '']),
+      ...recoverableRepayments.map((r) => [dateKey(r.date), 'Recoverable Repayment', 'Recovery', r.amount.toString(), r.notes, accountName(r.accountId), recoverables.find((advance) => advance.id === r.recoverableId)?.partyName || '']),
     ];
-    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
+    const csvCell = (value: string) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const csv = rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -221,7 +227,7 @@ export default function ReportsPage() {
     a.click();
     URL.revokeObjectURL(url);
     toast({ title: '📊 CSV exported' });
-  }, [incomeEntries, expenseEntries]);
+  }, [accounts, academicYears, incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments]);
 
   const handleExportPDF = useCallback(async () => {
     try {
@@ -242,6 +248,10 @@ export default function ReportsPage() {
         head: [['Item', 'Amount (₹)']],
         body: [
           ['Total Income', formatINR(breakdown.totalIncome)],
+          ['Current Tuition', formatINR(yearlyIncomeBreakdown.currentTuition)],
+          ['Old Fee Collections', formatINR(yearlyIncomeBreakdown.oldFees)],
+          ['Lunch Fees', formatINR(yearlyIncomeBreakdown.lunch)],
+          ['Investment / Extra Income', formatINR(yearlyIncomeBreakdown.other)],
           ['Fixed Expenses', formatINR(breakdown.fixedExpenses)],
           ['Gross Profit', formatINR(breakdown.grossProfit)],
           ['Extra Expenses', formatINR(breakdown.extraExpenses)],
@@ -256,7 +266,7 @@ export default function ReportsPage() {
     } catch {
       toast({ title: 'Export failed', variant: 'destructive' });
     }
-  }, [breakdown, selectedYear, homeExpensesTotal]);
+  }, [breakdown, selectedYear, homeExpensesTotal, yearlyIncomeBreakdown]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -300,6 +310,8 @@ export default function ReportsPage() {
             <MiniCard label="School Profit" value={formatINR(monthlySummary.schoolProfit)} color={monthlySummary.schoolProfit >= 0 ? 'text-primary' : 'text-expense'} subtitle="Income − School" />
             <MiniCard label="Overall Position" value={formatINR(monthlySummary.net)} color={monthlySummary.net >= 0 ? 'text-warning' : 'text-expense'} subtitle="After all expenses" />
           </div>
+
+          <IncomeBreakdownGrid breakdown={monthlySummary.incomeBreakdown} />
 
           {monthlySummary.categories.length > 0 && (
             <div className="rounded-lg border bg-card p-4">
@@ -380,6 +392,8 @@ export default function ReportsPage() {
               )}
             </div>
           </div>
+
+          <IncomeBreakdownGrid breakdown={yearlyIncomeBreakdown} />
 
           {/* Fee status */}
           {selectedYear && (() => {
@@ -734,6 +748,20 @@ function MiniCard({ label, value, color, subtitle }: { label: string; value: str
       <p className="text-fit text-xs text-muted-foreground">{label}</p>
       <p className={`money-fit mt-1 font-mono text-lg font-bold ${color}`}>{value}</p>
       {subtitle && <p className="text-fit text-[10px] text-muted-foreground">{subtitle}</p>}
+    </div>
+  );
+}
+
+function IncomeBreakdownGrid({ breakdown }: { breakdown: ReturnType<typeof getIncomeBreakdown> }) {
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <h3 className="mb-3 text-sm font-semibold">Cash Income Breakdown</h3>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MiniCard label="Current Tuition" value={formatINR(breakdown.currentTuition)} color="text-income" />
+        <MiniCard label="Old Fee Collections" value={formatINR(breakdown.oldFees)} color="text-income" />
+        <MiniCard label="Lunch Fees" value={formatINR(breakdown.lunch)} color="text-income" />
+        <MiniCard label="Investment / Extra" value={formatINR(breakdown.other)} color="text-income" />
+      </div>
     </div>
   );
 }

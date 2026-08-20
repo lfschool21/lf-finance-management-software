@@ -9,6 +9,7 @@ import { formatINR } from '@/utils/currency';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, Check, SkipForward } from 'lucide-react';
 import * as recurringService from '@/services/recurring';
+import { dateKey, parsePositiveAmount } from '@/lib/finance-domain';
 
 interface RecurringReviewModalProps {
   isOpen: boolean;
@@ -16,7 +17,7 @@ interface RecurringReviewModalProps {
 }
 
 export function RecurringReviewModal({ isOpen, onClose }: RecurringReviewModalProps) {
-  const { pendingRecurringItems, accounts, currentYearId, addExpense } = useFinanceStore();
+  const { pendingRecurringItems, accounts, getYearForDate, refreshRecurringTemplates, init } = useFinanceStore();
   const activeAccounts = accounts.filter((a) => !a.isArchived);
 
   const [amounts, setAmounts] = useState<Record<string, string>>({});
@@ -35,8 +36,8 @@ export function RecurringReviewModal({ isOpen, onClose }: RecurringReviewModalPr
   }
 
   async function handleConfirm(item: PendingRecurringItem) {
-    const amt = parseFloat(getAmount(item));
-    if (!amt || amt <= 0) {
+    const amt = parsePositiveAmount(getAmount(item));
+    if (amt === null) {
       toast({ title: 'Enter a valid amount', variant: 'destructive' });
       return;
     }
@@ -45,27 +46,27 @@ export function RecurringReviewModal({ isOpen, onClose }: RecurringReviewModalPr
       toast({ title: 'Select an account', variant: 'destructive' });
       return;
     }
+    const account = accounts.find((candidate) => candidate.id === accId);
+    if (item.template.expenseType === 'home' && account?.type === 'school_bank') {
+      toast({ title: 'Home expenses cannot use a school bank account', variant: 'destructive' });
+      return;
+    }
 
     setProcessing(item.template.id);
     try {
       const today = new Date();
-      await addExpense({
-        expense_type: item.template.expenseType as 'school' | 'home',
-        category: item.template.category,
-        sub_category: null,
+      const bookingYear = getYearForDate(today);
+      if (!bookingYear) throw new Error('No academic year covers today. Configure one before saving.');
+      const { error } = await recurringService.recordOccurrence({
+        templateId: item.template.id,
         amount: amt,
-        date: today.toISOString().split('T')[0],
-        academic_year_id: currentYearId,
-        account_id: accId,
+        date: dateKey(today),
+        academicYearId: bookingYear.id,
+        accountId: accId,
         description: `Recurring — ${today.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`,
-        tags: null,
-        is_recurring_instance: true,
-        recurring_template_id: item.template.id,
       });
-
-      await recurringService.update(item.template.id, {
-        last_generated_date: today.toISOString().split('T')[0],
-      });
+      if (error) throw error;
+      await init();
 
       setDismissed((prev) => new Set(prev).add(item.template.id));
       toast({ title: `✅ ${item.template.category} recorded` });
@@ -80,8 +81,19 @@ export function RecurringReviewModal({ isOpen, onClose }: RecurringReviewModalPr
     }
   }
 
-  function handleSkip(id: string) {
-    setDismissed((prev) => new Set(prev).add(id));
+  async function handleSkip(id: string) {
+    setProcessing(id);
+    try {
+      const { error } = await recurringService.update(id, { last_generated_date: dateKey(new Date()) });
+      if (error) throw error;
+      await refreshRecurringTemplates();
+      setDismissed((prev) => new Set(prev).add(id));
+      toast({ title: 'Occurrence skipped for this period' });
+    } catch (err) {
+      toast({ title: 'Skip failed', description: err instanceof Error ? err.message : 'Failed to persist skip', variant: 'destructive' });
+    } finally {
+      setProcessing(null);
+    }
   }
 
   return (
@@ -130,7 +142,7 @@ export function RecurringReviewModal({ isOpen, onClose }: RecurringReviewModalPr
                     <Select value={getAccountId(item)} onValueChange={(v) => setAccountIds((prev) => ({ ...prev, [item.template.id]: v }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {activeAccounts.map((a) => (
+                        {activeAccounts.filter((a) => item.template.expenseType !== 'home' || a.type !== 'school_bank').map((a) => (
                           <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                         ))}
                       </SelectContent>

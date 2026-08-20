@@ -104,7 +104,7 @@ export default function ExpensesPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-2">
-                      <p className="text-fit text-sm font-medium">{entry.category}</p>
+                      <p className="text-fit text-sm font-medium">{entry.subCategory ? `${entry.category}: ${entry.subCategory}` : entry.category}</p>
                       {entry.isRecurringInstance && (
                         <Repeat className="h-3 w-3 text-muted-foreground" />
                       )}

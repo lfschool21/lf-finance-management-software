@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   User,
   Landmark,
@@ -33,17 +33,20 @@ import * as academicYearsService from '@/services/academicYears';
 import * as recurringService from '@/services/recurring';
 import { signOut, getCurrentUser } from '@/services/auth';
 import type { RecurringTemplate } from '@/types/finance';
+import { parseNonNegativeAmount, parseStrictNumber } from '@/lib/finance-domain';
+import { parseFinanceBackup } from '@/lib/finance-backup';
+import type { Json } from '@/integrations/supabase/types';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
   const {
     isDarkMode, toggleDarkMode, accounts, academicYears, recurringTemplates,
     refreshAccounts, refreshAcademicYears, refreshRecurringTemplates, init,
+    getAccountBalance,
   } = useFinanceStore();
 
   // Password change
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [pwLoading, setPwLoading] = useState(false);
@@ -85,9 +88,9 @@ export default function SettingsPage() {
   const [restoreLoading, setRestoreLoading] = useState(false);
 
   const [userEmail, setUserEmail] = useState('');
-  useState(() => {
+  useEffect(() => {
     getCurrentUser().then((u) => { if (u?.email) setUserEmail(u.email); });
-  });
+  }, []);
 
   // Password
   async function handleChangePassword() {
@@ -99,7 +102,7 @@ export default function SettingsPage() {
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     toast({ title: '✅ Password updated' });
     setShowPasswordModal(false);
-    setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
+    setNewPassword(''); setConfirmPassword('');
   }
 
   // Account
@@ -110,25 +113,46 @@ export default function SettingsPage() {
   function openAccountEdit(id: string) {
     const acc = accounts.find((a) => a.id === id);
     if (!acc) return;
-    setEditAccountId(id); setAccName(acc.name); setAccType(acc.type); setAccBalance(acc.startingBalance.toString());
+    setEditAccountId(id); setAccName(acc.name); setAccType(acc.type); setAccBalance(getAccountBalance(id).toString());
     setShowAccountModal(true);
   }
   async function saveAccount() {
     if (!accName.trim()) { toast({ title: 'Name required', variant: 'destructive' }); return; }
+    const balance = parseStrictNumber(accBalance);
+    if (balance === null) { toast({ title: 'Enter a valid finite balance', variant: 'destructive' }); return; }
     setAccSaving(true);
-    if (editAccountId) {
-      await accountsService.update(editAccountId, { name: accName, type: accType, starting_balance: parseFloat(accBalance) || 0 });
-    } else {
-      await accountsService.create({ name: accName, type: accType, starting_balance: parseFloat(accBalance) || 0, is_archived: false });
+    try {
+      const result = editAccountId
+        ? await accountsService.setCurrentBalance(editAccountId, {
+            name: accName, type: accType, currentBalance: balance,
+          })
+        : await accountsService.create({ name: accName, type: accType, starting_balance: balance, is_archived: false });
+      if (result.error) throw result.error;
+      await refreshAccounts();
+      setShowAccountModal(false);
+      toast({ title: editAccountId ? '✅ Account updated' : '✅ Account added' });
+    } catch (err) {
+      toast({ title: 'Account save failed', description: err instanceof Error ? err.message : 'Database error', variant: 'destructive' });
+    } finally {
+      setAccSaving(false);
     }
-    await refreshAccounts();
-    setAccSaving(false); setShowAccountModal(false);
-    toast({ title: editAccountId ? '✅ Account updated' : '✅ Account added' });
   }
   async function archiveAccount(id: string) {
-    await accountsService.archive(id);
+    const balance = getAccountBalance(id);
+    if (Math.abs(balance) > 0.000001) {
+      toast({ title: 'Account cannot be archived', description: `Move or reconcile the remaining ${formatINR(balance)} first.`, variant: 'destructive' });
+      return;
+    }
+    const { error } = await accountsService.archive(id);
+    if (error) { toast({ title: 'Archive failed', description: error.message, variant: 'destructive' }); return; }
     await refreshAccounts();
     toast({ title: 'Account archived' });
+  }
+  async function unarchiveAccount(id: string) {
+    const { error } = await accountsService.unarchive(id);
+    if (error) { toast({ title: 'Unarchive failed', description: error.message, variant: 'destructive' }); return; }
+    await refreshAccounts();
+    toast({ title: 'Account restored' });
   }
 
   // Academic Year
@@ -148,24 +172,32 @@ export default function SettingsPage() {
   }
   async function saveYear() {
     if (!yearLabel.trim()) { toast({ title: 'Label required', variant: 'destructive' }); return; }
+    const target = parseNonNegativeAmount(yearTarget || '0');
+    const carry = parseNonNegativeAmount(yearCarry || '0');
+    if (!yearStart || !yearEnd || yearStart > yearEnd || target === null || carry === null) {
+      toast({ title: 'Enter valid dates and non-negative amounts', variant: 'destructive' }); return;
+    }
     setYearSaving(true);
-    if (editYearId) {
-      await academicYearsService.update(editYearId, {
+    try {
+      const result = editYearId ? await academicYearsService.update(editYearId, {
         label: yearLabel, start_date: yearStart, end_date: yearEnd,
-        target_tuition_fees: parseFloat(yearTarget) || 0,
-        carry_forward_fees: parseFloat(yearCarry) || 0,
-      });
-    } else {
-      await academicYearsService.create({
+        target_tuition_fees: target,
+        carry_forward_fees: carry,
+      }) : await academicYearsService.create({
         label: yearLabel, start_date: yearStart, end_date: yearEnd,
-        target_tuition_fees: parseFloat(yearTarget) || 0,
-        carry_forward_fees: parseFloat(yearCarry) || 0,
+        target_tuition_fees: target,
+        carry_forward_fees: carry,
         status: 'active',
       });
+      if (result.error) throw result.error;
+      await refreshAcademicYears();
+      setShowYearModal(false);
+      toast({ title: editYearId ? '✅ Year updated' : '✅ Year added' });
+    } catch (err) {
+      toast({ title: 'Academic year save failed', description: err instanceof Error ? err.message : 'Database error', variant: 'destructive' });
+    } finally {
+      setYearSaving(false);
     }
-    await refreshAcademicYears();
-    setYearSaving(false); setShowYearModal(false);
-    toast({ title: editYearId ? '✅ Year updated' : '✅ Year added' });
   }
 
   // Recurring
@@ -181,24 +213,30 @@ export default function SettingsPage() {
   async function saveRecurring() {
     if (!recCategory.trim()) { toast({ title: 'Category required', variant: 'destructive' }); return; }
     setRecSaving(true);
-    if (editRecurringId) {
-      await recurringService.update(editRecurringId, {
-        category: recCategory, default_amount: parseFloat(recAmount) || 0,
+    const amount = parseNonNegativeAmount(recAmount || '0');
+    if (amount === null) { toast({ title: 'Enter a non-negative default amount', variant: 'destructive' }); return; }
+    try {
+      const result = editRecurringId ? await recurringService.update(editRecurringId, {
+        category: recCategory, default_amount: amount,
         recurrence_interval: recInterval, expense_type: recType,
-      });
-    } else {
-      await recurringService.create({
-        category: recCategory, default_amount: parseFloat(recAmount) || 0,
+      }) : await recurringService.create({
+        category: recCategory, default_amount: amount,
         recurrence_interval: recInterval, expense_type: recType,
         is_active: true, last_generated_date: null,
       });
+      if (result.error) throw result.error;
+      await refreshRecurringTemplates();
+      setShowRecurringModal(false);
+      toast({ title: editRecurringId ? '✅ Template updated' : '✅ Template added' });
+    } catch (err) {
+      toast({ title: 'Template save failed', description: err instanceof Error ? err.message : 'Database error', variant: 'destructive' });
+    } finally {
+      setRecSaving(false);
     }
-    await refreshRecurringTemplates();
-    setRecSaving(false); setShowRecurringModal(false);
-    toast({ title: editRecurringId ? '✅ Template updated' : '✅ Template added' });
   }
   async function toggleRecurringActive(id: string) {
-    await recurringService.toggleActive(id);
+    const { error } = await recurringService.toggleActive(id);
+    if (error) { toast({ title: 'Update failed', description: error.message, variant: 'destructive' }); return; }
     await refreshRecurringTemplates();
   }
 
@@ -206,13 +244,14 @@ export default function SettingsPage() {
   async function handleCreateBackup() {
     setBackupLoading(true);
     try {
-      const tables = ['academic_years', 'accounts', 'income_entries', 'expense_entries', 'transfers', 'recurring_templates'] as const;
+      const tables = ['academic_years', 'accounts', 'income_entries', 'expense_entries', 'transfers', 'recurring_templates', 'recoverables', 'recoverable_repayments'] as const;
       const backup: Record<string, unknown[]> = {};
       for (const table of tables) {
-        const { data } = await supabase.from(table).select('*');
+        const { data, error } = await supabase.from(table).select('*');
+        if (error) throw error;
         backup[table] = data || [];
       }
-      const json = JSON.stringify({ version: '1.0', date: new Date().toISOString(), data: backup }, null, 2);
+      const json = JSON.stringify({ version: '2.0', date: new Date().toISOString(), data: backup }, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -221,10 +260,11 @@ export default function SettingsPage() {
       a.click();
       URL.revokeObjectURL(url);
       toast({ title: '✅ Backup created and downloaded' });
-    } catch {
-      toast({ title: 'Backup failed', variant: 'destructive' });
+    } catch (err) {
+      toast({ title: 'Backup failed', description: err instanceof Error ? err.message : 'Database error', variant: 'destructive' });
+    } finally {
+      setBackupLoading(false);
     }
-    setBackupLoading(false);
   }
 
   async function handleRestoreBackup() {
@@ -237,11 +277,10 @@ export default function SettingsPage() {
       setRestoreLoading(true);
       try {
         const text = await file.text();
-        const backup = JSON.parse(text);
-        if (!backup.data) throw new Error('Invalid backup file');
+        const backup = parseFinanceBackup(JSON.parse(text));
 
-        const counts = Object.entries(backup.data as Record<string, unknown[]>)
-          .map(([table, rows]) => `${table}: ${(rows as unknown[]).length} rows`)
+        const counts = Object.entries(backup.data)
+          .map(([table, rows]) => `${table}: ${rows.length} rows`)
           .join(', ');
 
         if (!confirm(`Restore backup from ${backup.date}?\n\nData: ${counts}\n\nThis will replace ALL current data.`)) {
@@ -249,21 +288,8 @@ export default function SettingsPage() {
           return;
         }
 
-        // Delete existing data
-        const tables = ['transfers', 'expense_entries', 'income_entries', 'recurring_templates', 'accounts', 'academic_years'] as const;
-        for (const table of tables) {
-          await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        }
-
-        // Restore in order
-        const restoreOrder = ['academic_years', 'accounts', 'income_entries', 'expense_entries', 'transfers', 'recurring_templates'] as const;
-        for (const table of restoreOrder) {
-          const rows = (backup.data as Record<string, unknown[]>)[table];
-          if (rows && rows.length > 0) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await supabase.from(table).insert(rows as any);
-          }
-        }
+        const { error } = await supabase.rpc('restore_finance_backup', { p_backup: backup as unknown as Json });
+        if (error) throw error;
 
         await init();
         toast({ title: '✅ Backup restored successfully' });
@@ -280,21 +306,22 @@ export default function SettingsPage() {
     if (wipeText !== 'DELETE EVERYTHING PERMANENTLY') return;
     setWiping(true);
     try {
-      const tables = ['transfers', 'expense_entries', 'income_entries', 'recurring_templates', 'backups_log', 'accounts', 'academic_years'] as const;
-      for (const table of tables) {
-        await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      }
+      const { error } = await supabase.rpc('wipe_finance_data');
+      if (error) throw error;
+      await init();
       toast({ title: 'All data wiped' });
       setShowWipeConfirm(false);
       navigate('/setup', { replace: true });
-    } catch {
-      toast({ title: 'Wipe failed', variant: 'destructive' });
+    } catch (err) {
+      toast({ title: 'Wipe failed', description: err instanceof Error ? err.message : 'Database error', variant: 'destructive' });
+    } finally {
+      setWiping(false);
     }
-    setWiping(false);
   }
 
   async function handleLogout() {
-    await signOut();
+    const { error } = await signOut();
+    if (error) { toast({ title: 'Sign out failed', description: error.message, variant: 'destructive' }); return; }
     navigate('/login', { replace: true });
   }
 
@@ -349,6 +376,9 @@ export default function SettingsPage() {
                   <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openAccountEdit(acc.id)}>Edit</Button>
                   {!acc.isArchived && acc.type !== 'cash' && (
                     <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => archiveAccount(acc.id)}>Archive</Button>
+                  )}
+                  {acc.isArchived && (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => unarchiveAccount(acc.id)}>Unarchive</Button>
                   )}
                 </div>
               </div>
@@ -459,7 +489,12 @@ export default function SettingsPage() {
                 <SelectItem value="cash">Cash</SelectItem>
               </SelectContent>
             </Select>
-            <Input type="number" placeholder="Starting balance (₹)" value={accBalance} onChange={(e) => setAccBalance(e.target.value)} />
+            <div>
+              <Input type="number" placeholder={editAccountId ? 'Current balance (₹)' : 'Opening balance (₹)'} value={accBalance} onChange={(e) => setAccBalance(e.target.value)} />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {editAccountId ? 'Sets the current balance without changing transaction history.' : 'Amount held before recorded transactions.'}
+              </p>
+            </div>
             <Button onClick={saveAccount} disabled={accSaving} className="w-full">
               {accSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {editAccountId ? 'Update' : 'Add'}
             </Button>

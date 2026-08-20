@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { requireUserId, supabase } from './supabase';
 
 export interface DbTransfer {
   id: string;
@@ -15,14 +15,8 @@ export interface DbTransfer {
 
 export type TransferInsert = Omit<DbTransfer, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 
-async function getUserId() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  return user.id;
-}
-
 export async function getAll() {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('transfers')
     .select('*')
@@ -32,22 +26,30 @@ export async function getAll() {
 }
 
 export async function create(input: TransferInsert) {
-  const userId = await getUserId();
-  const { data, error } = await supabase
-    .from('transfers')
-    .insert({ ...input, user_id: userId })
-    .select()
-    .single();
+  await requireUserId();
+  const { data, error } = await supabase.rpc('save_transfer', {
+    p_transfer_id: null,
+    p_from_account_id: input.from_account_id,
+    p_to_account_id: input.to_account_id,
+    p_amount: input.amount,
+    p_date: input.date,
+    p_category: input.category,
+    p_notes: input.notes,
+  });
   return { data: data as DbTransfer | null, error };
 }
 
-export async function update(id: string, input: Partial<TransferInsert>) {
-  const { data, error } = await supabase
-    .from('transfers')
-    .update(input)
-    .eq('id', id)
-    .select()
-    .single();
+export async function update(id: string, input: TransferInsert) {
+  await requireUserId();
+  const { data, error } = await supabase.rpc('save_transfer', {
+    p_transfer_id: id,
+    p_from_account_id: input.from_account_id,
+    p_to_account_id: input.to_account_id,
+    p_amount: input.amount,
+    p_date: input.date,
+    p_category: input.category,
+    p_notes: input.notes,
+  });
   return { data: data as DbTransfer | null, error };
 }
 

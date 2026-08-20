@@ -11,6 +11,7 @@ import {
   ArrowLeftRight,
   GraduationCap,
   Landmark,
+  HandCoins,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { path: '/income', label: 'Income', icon: TrendingUp },
   { path: '/expenses', label: 'Expenses', icon: TrendingDown },
   { path: '/transfers', label: 'Transfers', icon: ArrowLeftRight },
+  { path: '/recoverables', label: 'Recoverables', icon: HandCoins },
   { path: '/balances', label: 'Balances', icon: Landmark },
   { path: '/reports', label: 'Reports', icon: BarChart3 },
   { path: '/settings', label: 'Settings', icon: Settings },
@@ -27,6 +29,8 @@ const BOTTOM_NAV = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/income', label: 'Income', icon: TrendingUp },
   { path: '/expenses', label: 'Expenses', icon: TrendingDown },
+  { path: '/transfers', label: 'Transfers', icon: ArrowLeftRight },
+  { path: '/recoverables', label: 'Recoverable', icon: HandCoins },
   { path: '/balances', label: 'Balances', icon: Landmark },
   { path: '/reports', label: 'Reports', icon: BarChart3 },
   { path: '/settings', label: 'Settings', icon: Settings },
@@ -114,7 +118,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-6 border-t bg-card md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-50 flex overflow-x-auto border-t bg-card md:hidden">
         {BOTTOM_NAV.map((item) => {
           const isActive = pathname === item.path;
           return (
@@ -122,7 +126,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               key={item.path}
               to={item.path}
               className={cn(
-                'flex min-w-0 flex-col items-center gap-0.5 px-0.5 py-2 text-[9px] font-medium transition-colors min-[380px]:text-[10px]',
+                'flex min-w-[4.5rem] flex-1 flex-col items-center gap-0.5 px-0.5 py-2 text-[9px] font-medium transition-colors min-[380px]:text-[10px]',
                 isActive ? 'text-primary' : 'text-muted-foreground'
               )}
             >

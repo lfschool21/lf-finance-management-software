@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { requireUserId, supabase } from './supabase';
 
 export interface DbExpenseEntry {
   id: string;
@@ -20,14 +20,8 @@ export interface DbExpenseEntry {
 
 export type ExpenseInsert = Omit<DbExpenseEntry, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 
-async function getUserId() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  return user.id;
-}
-
 export async function getAll(yearId?: string) {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   let query = supabase
     .from('expense_entries')
     .select('*')
@@ -39,7 +33,7 @@ export async function getAll(yearId?: string) {
 }
 
 export async function create(input: ExpenseInsert) {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('expense_entries')
     .insert({ ...input, user_id: userId })
@@ -64,7 +58,7 @@ export async function deleteEntry(id: string) {
 }
 
 export async function checkDuplicate(date: string, amount: number, category: string) {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('expense_entries')
     .select('*')
@@ -76,7 +70,7 @@ export async function checkDuplicate(date: string, amount: number, category: str
 }
 
 export async function checkSimilarInMonth(year: number, month: number, description: string) {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
   const { data, error } = await supabase
@@ -90,7 +84,7 @@ export async function checkSimilarInMonth(year: number, month: number, descripti
 }
 
 export async function checkCategoryInMonth(year: number, month: number, category: string) {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
   const { data, error } = await supabase

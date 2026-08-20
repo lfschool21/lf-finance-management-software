@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:test": "vite --host 127.0.0.1 --mode test",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:local-db": "node scripts/local-release-gate.mjs",
+    "test:watch": "vitest",
+    "test:e2e": "npm run test:local-db && playwright test"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

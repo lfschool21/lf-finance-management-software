@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { requireUserId, supabase } from './supabase';
 
 export interface DbAccount {
   id: string;
@@ -13,14 +13,8 @@ export interface DbAccount {
 
 export type AccountInsert = Omit<DbAccount, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 
-async function getUserId() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  return user.id;
-}
-
 export async function getAll() {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('accounts')
     .select('*')
@@ -31,7 +25,7 @@ export async function getAll() {
 }
 
 export async function getAllIncludingArchived() {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('accounts')
     .select('*')
@@ -41,7 +35,7 @@ export async function getAllIncludingArchived() {
 }
 
 export async function create(input: AccountInsert) {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('accounts')
     .insert({ ...input, user_id: userId })
@@ -58,6 +52,20 @@ export async function update(id: string, input: Partial<AccountInsert>) {
     .select()
     .single();
   return { data: data as DbAccount | null, error };
+}
+
+export async function setCurrentBalance(id: string, input: { name: string; type: DbAccount['type']; currentBalance: number }) {
+  const { data, error } = await supabase.rpc('set_account_current_balance', {
+    p_account_id: id,
+    p_name: input.name,
+    p_type: input.type,
+    p_current_balance: input.currentBalance,
+  });
+  return { data: data as DbAccount | null, error };
+}
+
+export async function unarchive(id: string) {
+  return update(id, { is_archived: false } as Partial<AccountInsert>);
 }
 
 export async function archive(id: string) {

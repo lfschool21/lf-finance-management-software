@@ -5,11 +5,10 @@ import { Input } from '@/components/ui/input';
 import { GraduationCap, Plus, Trash2, Loader2, CheckCircle2 } from 'lucide-react';
 import { formatINR } from '@/utils/currency';
 import { getCurrentAcademicYear, getAcademicYearDates } from '@/utils/academic-year';
-import * as accountsService from '@/services/accounts';
-import * as academicYearsService from '@/services/academicYears';
-import * as recurringService from '@/services/recurring';
 import { useFinanceStore } from '@/store/finance-store';
 import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/services/supabase';
+import { parseNonNegativeAmount, parseStrictNumber } from '@/lib/finance-domain';
 
 interface AccountDraft {
   key: string;
@@ -85,49 +84,37 @@ export default function SetupWizard() {
   }
 
   async function handleFinish() {
-    setSaving(true);
     try {
-      // Create accounts
       const allAccountDrafts = [
         schoolAccount,
         ...personalAccounts,
         { key: 'cash', name: 'Cash at Home', type: 'cash' as const, balance: cashBalance },
       ];
-
-      for (const draft of allAccountDrafts) {
-        const { error } = await accountsService.create({
-          name: draft.name || 'Cash at Home',
-          type: draft.type,
-          starting_balance: parseFloat(draft.balance) || 0,
-          is_archived: false,
-        });
-        if (error) throw error;
-      }
-
-      // Create academic year
-      const { error: ayError } = await academicYearsService.create({
-        label: ayLabel,
-        start_date: ayStartDate,
-        end_date: ayEndDate,
-        target_tuition_fees: parseFloat(targetFees) || 0,
-        status: 'active',
+      const accountsPayload = allAccountDrafts.map((draft) => {
+        const startingBalance = parseStrictNumber(draft.balance || '0');
+        if (startingBalance === null) throw new Error(`Enter a valid finite opening balance for ${draft.name || 'Cash at Home'}`);
+        return { name: draft.name.trim() || 'Cash at Home', type: draft.type, starting_balance: startingBalance };
       });
-      if (ayError) throw ayError;
-
-      // Create recurring templates
-      for (const draft of recurringDrafts) {
-        const { error } = await recurringService.create({
-          expense_type: 'school',
-          category: draft.category,
-          default_amount: parseFloat(draft.amount) || 0,
-          recurrence_interval: draft.interval,
-          last_generated_date: null,
-          is_active: true,
-        });
-        if (error) throw error;
+      const target = parseNonNegativeAmount(targetFees || '0');
+      if (target === null || !ayStartDate || !ayEndDate || ayStartDate > ayEndDate) {
+        throw new Error('Enter valid academic-year dates and a non-negative tuition target');
       }
+      const templatesPayload = recurringDrafts.map((draft) => {
+        const amount = parseNonNegativeAmount(draft.amount || '0');
+        if (amount === null) throw new Error(`Enter a valid non-negative amount for ${draft.category}`);
+        return { expense_type: 'school', category: draft.category.trim(), default_amount: amount, recurrence_interval: draft.interval };
+      });
 
-      // Reload store
+      setSaving(true);
+      const { error } = await supabase.rpc('complete_initial_setup', {
+        p_accounts: accountsPayload,
+        p_year: {
+          label: ayLabel.trim(), start_date: ayStartDate, end_date: ayEndDate,
+          target_tuition_fees: target, carry_forward_fees: 0, status: 'active',
+        },
+        p_templates: templatesPayload,
+      });
+      if (error) throw error;
       await init();
       toast({ title: 'Setup complete!', description: 'Your finance tracker is ready.' });
       navigate('/', { replace: true });

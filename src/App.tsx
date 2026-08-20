@@ -18,6 +18,7 @@ import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
 import SetupWizard from "@/pages/SetupWizard";
 import NotFound from "@/pages/NotFound";
+import RecoverablesPage from "@/pages/RecoverablesPage";
 
 const queryClient = new QueryClient();
 
@@ -54,6 +55,7 @@ const App = () => (
                       <Route path="/income" element={<IncomePage />} />
                       <Route path="/expenses" element={<ExpensesPage />} />
                       <Route path="/transfers" element={<TransfersPage />} />
+                      <Route path="/recoverables" element={<RecoverablesPage />} />
                       <Route path="/balances" element={<BankBalancesPage />} />
                       <Route path="/reports" element={<ReportsPage />} />
                       <Route path="/search" element={<SearchPage />} />

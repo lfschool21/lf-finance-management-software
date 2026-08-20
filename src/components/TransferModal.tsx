@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { formatINR } from '@/utils/currency';
 import { toast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import type { Transfer, TransferCategory } from '@/types/finance';
+import { inferTransferCategory, parsePositiveAmount } from '@/lib/finance-domain';
 
 const TRANSFER_CATEGORIES: { value: TransferCategory; label: string }[] = [
   { value: 'school_to_personal', label: 'School → Personal' },
@@ -27,7 +28,7 @@ interface TransferModalProps {
 }
 
 export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps) {
-  const { accounts, addTransfer, deleteTransfer } = useFinanceStore();
+  const { accounts, addTransfer, updateTransfer, deleteTransfer, getAccountBalance } = useFinanceStore();
 
   const [fromAccountId, setFromAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
@@ -40,7 +41,10 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const isEdit = !!editEntry;
-  const activeAccounts = accounts.filter((a) => !a.isArchived);
+  const activeAccounts = useMemo(
+    () => accounts.filter((account) => !account.isArchived || account.id === editEntry?.fromAccountId || account.id === editEntry?.toAccountId),
+    [accounts, editEntry?.fromAccountId, editEntry?.toAccountId],
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -65,12 +69,18 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
 
   function validate(): boolean {
     const errs: Record<string, string> = {};
-    const amt = parseFloat(amount);
-    if (!amount || isNaN(amt) || amt <= 0) errs.amount = 'Amount must be greater than zero';
+    const amt = parsePositiveAmount(amount);
+    if (amt === null) errs.amount = 'Enter a finite amount greater than zero';
     if (!fromAccountId) errs.from = 'Select source account';
     if (!toAccountId) errs.to = 'Select destination account';
     if (fromAccountId && toAccountId && fromAccountId === toAccountId) errs.to = 'Cannot transfer to same account';
     if (!date) errs.date = 'Date is required';
+    if (amt !== null && fromAccountId) {
+      let available = getAccountBalance(fromAccountId);
+      if (editEntry?.fromAccountId === fromAccountId) available += editEntry.amount;
+      if (editEntry?.toAccountId === fromAccountId) available -= editEntry.amount;
+      if (amt > available) errs.amount = `Available balance is ${formatINR(available)}`;
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -79,19 +89,19 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
     if (!validate()) return;
     setSaving(true);
     try {
+      const fromAccount = accounts.find((account) => account.id === fromAccountId)!;
+      const toAccount = accounts.find((account) => account.id === toAccountId)!;
       const payload = {
         from_account_id: fromAccountId,
         to_account_id: toAccountId,
-        amount: parseFloat(amount),
+        amount: parsePositiveAmount(amount)!,
         date,
-        category,
+        category: inferTransferCategory(fromAccount.type, toAccount.type),
         notes: notes || null,
       };
 
       if (isEdit && editEntry) {
-        // Delete old + create new (service has no update)
-        await deleteTransfer(editEntry.id);
-        await addTransfer(payload);
+        await updateTransfer(editEntry.id, payload);
         toast({ title: '✅ Transfer updated' });
       } else {
         await addTransfer(payload);
@@ -135,7 +145,7 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
                 <SelectTrigger><SelectValue placeholder="Select source" /></SelectTrigger>
                 <SelectContent>
                   {activeAccounts.filter((a) => a.id !== toAccountId).map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    <SelectItem key={a.id} value={a.id}>{a.name}{a.isArchived ? ' (Archived)' : ''}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -148,7 +158,7 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
                 <SelectTrigger><SelectValue placeholder="Select destination" /></SelectTrigger>
                 <SelectContent>
                   {activeAccounts.filter((a) => a.id !== fromAccountId).map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    <SelectItem key={a.id} value={a.id}>{a.name}{a.isArchived ? ' (Archived)' : ''}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -172,14 +182,15 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
 
             <div>
               <Label>Transfer Type</Label>
-              <Select value={category} onValueChange={(v) => setCategory(v as TransferCategory)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TRANSFER_CATEGORIES.map((c) => (
-                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                value={fromAccountId && toAccountId
+                  ? TRANSFER_CATEGORIES.find((item) => item.value === inferTransferCategory(
+                      accounts.find((account) => account.id === fromAccountId)!.type,
+                      accounts.find((account) => account.id === toAccountId)!.type,
+                    ))?.label || 'Internal Transfer'
+                  : 'Select both accounts'}
+                readOnly
+              />
             </div>
 
             <div>

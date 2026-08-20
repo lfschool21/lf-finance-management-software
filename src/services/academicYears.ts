@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { requireUserId, supabase } from './supabase';
 
 export interface DbAcademicYear {
   id: string;
@@ -15,14 +15,8 @@ export interface DbAcademicYear {
 
 export type AcademicYearInsert = Omit<DbAcademicYear, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 
-async function getUserId() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  return user.id;
-}
-
 export async function getAll() {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('academic_years')
     .select('*')
@@ -32,7 +26,7 @@ export async function getAll() {
 }
 
 export async function create(input: AcademicYearInsert) {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('academic_years')
     .insert({ ...input, user_id: userId })
@@ -52,7 +46,7 @@ export async function update(id: string, input: Partial<AcademicYearInsert>) {
 }
 
 export async function getActiveYear() {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const today = new Date().toISOString().split('T')[0];
   const { data, error } = await supabase
     .from('academic_years')

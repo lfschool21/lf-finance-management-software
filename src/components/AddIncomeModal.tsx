@@ -13,8 +13,9 @@ import { formatINR } from '@/utils/currency';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, X, IndianRupee, UtensilsCrossed, PlusCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { IncomeEntry } from '@/types/finance';
+import type { IncomeDbType, IncomeEntry } from '@/types/finance';
 import { TUITION_CATEGORY, LUNCH_CATEGORY, OTHER_CATEGORY } from '@/types/finance';
+import { getFeeOutstanding, isPreviousAcademicYear, parseDateOnly, parsePositiveAmount } from '@/lib/finance-domain';
 
 type IncomeType = 'tuition' | 'lunch' | 'other';
 
@@ -22,6 +23,7 @@ interface AddIncomeModalProps {
   isOpen: boolean;
   onClose: () => void;
   editEntry?: IncomeEntry;
+  presetLateYearId?: string;
 }
 
 function categoryToType(cat: string): IncomeType {
@@ -30,8 +32,8 @@ function categoryToType(cat: string): IncomeType {
   return 'other';
 }
 
-export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalProps) {
-  const { accounts, academicYears, incomeEntries, currentYearId, addIncome, updateIncome, deleteIncome, getYearForDate } = useFinanceStore();
+export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId }: AddIncomeModalProps) {
+  const { accounts, academicYears, incomeEntries, addIncome, updateIncome, deleteIncome, getYearForDate } = useFinanceStore();
 
   const [incomeType, setIncomeType] = useState<IncomeType>('tuition');
   const [amount, setAmount] = useState('');
@@ -47,31 +49,30 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const isEdit = !!editEntry;
-  const activeAccounts = accounts.filter((a) => !a.isArchived);
+  const activeAccounts = useMemo(
+    () => accounts.filter((account) => !account.isArchived || account.id === editEntry?.accountId),
+    [accounts, editEntry?.accountId],
+  );
 
   const detectedYear = useMemo(() => {
     if (!date) return undefined;
-    return getYearForDate(new Date(date));
+    return getYearForDate(parseDateOnly(date));
   }, [date, getYearForDate]);
 
-  const academicYearId = detectedYear?.id || currentYearId;
+  const academicYearId = detectedYear?.id || '';
 
   const pendingYears = useMemo(() => {
-    return academicYears.filter((y) => {
-      const collected = incomeEntries
-        .filter(
-          (i) =>
-            i.category === TUITION_CATEGORY &&
-            (
-              (i.academicYearId === y.id && !i.isLateCollection) ||
-              (i.isLateCollection && i.originalYearId === y.id)
-            )
-        )
-        .reduce((s, i) => s + i.amount, 0);
-      const totalOwed = y.targetTuitionFees + (y.carryForwardFees || 0);
-      return collected < totalOwed;
-    });
-  }, [academicYears, incomeEntries]);
+    if (!detectedYear) return [];
+    return academicYears.filter((year) =>
+      isPreviousAcademicYear(year, detectedYear) &&
+      getFeeOutstanding(year, incomeEntries, editEntry?.id).remaining > 0,
+    );
+  }, [academicYears, detectedYear, editEntry?.id, incomeEntries]);
+
+  const selectedOutstanding = useMemo(() => {
+    const original = academicYears.find((year) => year.id === originalYearId);
+    return original ? getFeeOutstanding(original, incomeEntries, editEntry?.id).remaining : 0;
+  }, [academicYears, editEntry?.id, incomeEntries, originalYearId]);
 
   useEffect(() => {
     if (isOpen) {
@@ -89,29 +90,35 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
         setAmount('');
         setDate(new Date().toISOString().split('T')[0]);
         setAccountId(activeAccounts[0]?.id || '');
-        setIsLateCollection(false);
-        setOriginalYearId('');
+        setIsLateCollection(!!presetLateYearId);
+        setOriginalYearId(presetLateYearId || '');
         setNotes('');
         setTags([]);
       }
       setErrors({});
       setTagInput('');
     }
-  }, [isOpen, editEntry]);
+  }, [isOpen, editEntry, presetLateYearId, activeAccounts]);
 
   /** Returns the DB enum value for the selected income type */
-  function resolvedCategory(): string {
+  function resolvedCategory(): IncomeDbType {
     return incomeType; // 'tuition' | 'lunch' | 'other' — matches DB CHECK constraint
   }
 
   function validate(): boolean {
     const errs: Record<string, string> = {};
-    const amt = parseFloat(amount);
-    if (!amount || isNaN(amt) || amt <= 0) errs.amount = 'Amount must be greater than zero';
+    const amt = parsePositiveAmount(amount);
+    if (amt === null) errs.amount = 'Enter a finite amount greater than zero';
     if (!date) errs.date = 'Date is required';
     if (!accountId) errs.accountId = 'Select an account';
     if (isLateCollection && !originalYearId) errs.originalYearId = 'Select the original year';
     if (!academicYearId) errs.year = 'No academic year found for this date';
+    if (isLateCollection && originalYearId && !pendingYears.some((year) => year.id === originalYearId)) {
+      errs.originalYearId = 'Select a preceding year with an outstanding balance';
+    }
+    if (isLateCollection && amt !== null && amt > selectedOutstanding) {
+      errs.amount = `Amount cannot exceed the remaining ${formatINR(selectedOutstanding)}`;
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -128,7 +135,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
     try {
       const payload = {
         type: resolvedCategory(),
-        amount: parseFloat(amount),
+        amount: parsePositiveAmount(amount)!,
         date,
         academic_year_id: academicYearId,
         account_id: accountId,
@@ -186,7 +193,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
                   [
                     { key: 'tuition', label: 'Tuition Fees', icon: IndianRupee },
                     { key: 'lunch',   label: 'Lunch Fees',   icon: UtensilsCrossed },
-                    { key: 'other',   label: 'Other Income', icon: PlusCircle },
+                    { key: 'other',   label: 'Investment / Extra', icon: PlusCircle },
                   ] as const
                 ).map(({ key, label, icon: Icon }) => (
                   <button
@@ -242,7 +249,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
                 <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
                 <SelectContent>
                   {activeAccounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    <SelectItem key={a.id} value={a.id}>{a.name}{a.isArchived ? ' (Archived)' : ''}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -267,11 +274,16 @@ export function AddIncomeModal({ isOpen, onClose, editEntry }: AddIncomeModalPro
                       <SelectTrigger><SelectValue placeholder="Select original year" /></SelectTrigger>
                       <SelectContent>
                         {pendingYears.map((y) => (
-                          <SelectItem key={y.id} value={y.id}>AY {y.label}</SelectItem>
+                          <SelectItem key={y.id} value={y.id}>
+                            AY {y.label} — {formatINR(getFeeOutstanding(y, incomeEntries, editEntry?.id).remaining)} pending
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     {errors.originalYearId && <p className="mt-1 text-xs text-destructive">{errors.originalYearId}</p>}
+                    {originalYearId && !errors.originalYearId && (
+                      <p className="mt-1 text-xs text-muted-foreground">Available outstanding: {formatINR(selectedOutstanding)}</p>
+                    )}
                   </div>
                 )}
               </>

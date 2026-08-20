@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { requireUserId, supabase } from './supabase';
 
 export interface DbRecurringTemplate {
   id: string;
@@ -15,14 +15,8 @@ export interface DbRecurringTemplate {
 
 export type RecurringInsert = Omit<DbRecurringTemplate, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 
-async function getUserId() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  return user.id;
-}
-
 export async function getAll() {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('recurring_templates')
     .select('*')
@@ -32,7 +26,7 @@ export async function getAll() {
 }
 
 export async function create(input: RecurringInsert) {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('recurring_templates')
     .insert({ ...input, user_id: userId })
@@ -53,18 +47,36 @@ export async function update(id: string, input: Partial<RecurringInsert>) {
 
 export async function toggleActive(id: string) {
   // First get current value
-  const { data: current } = await supabase
+  const { data: current, error } = await supabase
     .from('recurring_templates')
     .select('is_active')
     .eq('id', id)
     .single();
-  if (!current) return { data: null, error: new Error('Template not found') };
+  if (error || !current) return { data: null, error: error || new Error('Template not found') };
   
   return update(id, { is_active: !current.is_active });
 }
 
+export async function recordOccurrence(input: {
+  templateId: string;
+  amount: number;
+  date: string;
+  academicYearId: string;
+  accountId: string;
+  description: string;
+}) {
+  return supabase.rpc('record_recurring_expense', {
+    p_template_id: input.templateId,
+    p_amount: input.amount,
+    p_date: input.date,
+    p_academic_year_id: input.academicYearId,
+    p_account_id: input.accountId,
+    p_description: input.description,
+  });
+}
+
 export async function getTemplatesNeedingGeneration(currentMonth: number, currentYear: number) {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('recurring_templates')
     .select('*')

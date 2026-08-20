@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.4"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -180,6 +200,13 @@ export type Database = {
             referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "expense_entries_recurring_template_id_fkey"
+            columns: ["recurring_template_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_templates"
+            referencedColumns: ["id"]
+          },
         ]
       }
       income_entries: {
@@ -190,7 +217,7 @@ export type Database = {
           created_at: string | null
           date: string
           id: string
-          is_late_collection: boolean | null
+          is_late_collection: boolean
           notes: string | null
           original_year_id: string | null
           tags: string[] | null
@@ -205,7 +232,7 @@ export type Database = {
           created_at?: string | null
           date: string
           id?: string
-          is_late_collection?: boolean | null
+          is_late_collection?: boolean
           notes?: string | null
           original_year_id?: string | null
           tags?: string[] | null
@@ -220,7 +247,7 @@ export type Database = {
           created_at?: string | null
           date?: string
           id?: string
-          is_late_collection?: boolean | null
+          is_late_collection?: boolean
           notes?: string | null
           original_year_id?: string | null
           tags?: string[] | null
@@ -248,6 +275,101 @@ export type Database = {
             columns: ["original_year_id"]
             isOneToOne: false
             referencedRelation: "academic_years"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recoverable_repayments: {
+        Row: {
+          account_id: string
+          amount: number
+          created_at: string
+          date: string
+          id: string
+          notes: string | null
+          recoverable_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          amount: number
+          created_at?: string
+          date: string
+          id?: string
+          notes?: string | null
+          recoverable_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          created_at?: string
+          date?: string
+          id?: string
+          notes?: string | null
+          recoverable_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recoverable_repayments_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recoverable_repayments_recoverable_id_fkey"
+            columns: ["recoverable_id"]
+            isOneToOne: false
+            referencedRelation: "recoverables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recoverables: {
+        Row: {
+          created_at: string
+          date_given: string
+          id: string
+          notes: string | null
+          original_amount: number
+          party_name: string
+          source_account_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date_given: string
+          id?: string
+          notes?: string | null
+          original_amount: number
+          party_name: string
+          source_account_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          date_given?: string
+          id?: string
+          notes?: string | null
+          original_amount?: number
+          party_name?: string
+          source_account_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recoverables_source_account_id_fkey"
+            columns: ["source_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -350,7 +472,76 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      complete_initial_setup: {
+        Args: { p_accounts: Json; p_templates?: Json; p_year: Json }
+        Returns: undefined
+      }
+      record_recurring_expense: {
+        Args: {
+          p_academic_year_id: string
+          p_account_id: string
+          p_amount: number
+          p_date: string
+          p_description: string
+          p_template_id: string
+        }
+        Returns: undefined
+      }
+      restore_finance_backup: { Args: { p_backup: Json }; Returns: undefined }
+      save_transfer: {
+        Args: {
+          p_amount: number
+          p_category: string
+          p_date: string
+          p_from_account_id: string
+          p_notes: string
+          p_to_account_id: string
+          p_transfer_id: string
+        }
+        Returns: {
+          amount: number
+          category: string
+          created_at: string | null
+          date: string
+          from_account_id: string
+          id: string
+          notes: string | null
+          to_account_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "transfers"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_account_current_balance: {
+        Args: {
+          p_account_id: string
+          p_current_balance: number
+          p_name: string
+          p_type: string
+        }
+        Returns: {
+          created_at: string | null
+          id: string
+          is_archived: boolean | null
+          name: string
+          starting_balance: number
+          type: string
+          updated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "accounts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      wipe_finance_data: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
@@ -479,6 +670,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

@@ -32,38 +32,25 @@ export default function BankBalancesPage() {
     incomeEntries,
     expenseEntries,
     transfers,
+    recoverables,
+    recoverableRepayments,
     getAccountBalance,
+    getAccountNetMovement,
     getTotalBalance,
   } = useFinanceStore();
 
   const accountRows = useMemo(() => {
     return accounts
-      .filter((account) => !account.isArchived)
       .map((account) => {
-        const income = incomeEntries
-          .filter((entry) => entry.accountId === account.id)
-          .reduce((sum, entry) => sum + entry.amount, 0);
-        const expenses = expenseEntries
-          .filter((entry) => entry.accountId === account.id)
-          .reduce((sum, entry) => sum + entry.amount, 0);
-        const transfersIn = transfers
-          .filter((transfer) => transfer.toAccountId === account.id)
-          .reduce((sum, transfer) => sum + transfer.amount, 0);
-        const transfersOut = transfers
-          .filter((transfer) => transfer.fromAccountId === account.id)
-          .reduce((sum, transfer) => sum + transfer.amount, 0);
-
+        const movement = getAccountNetMovement(account.id);
         return {
           ...account,
-          income,
-          expenses,
-          transfersIn,
-          transfersOut,
+          ...movement,
           balance: getAccountBalance(account.id),
         };
       })
       .sort((a, b) => b.balance - a.balance);
-  }, [accounts, incomeEntries, expenseEntries, transfers, getAccountBalance]);
+  }, [accounts, incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments, getAccountBalance, getAccountNetMovement]);
 
   const totals = useMemo(() => {
     const totalBalance = getTotalBalance();
@@ -121,17 +108,35 @@ export default function BankBalancesPage() {
       },
     ]);
 
-    return [...income, ...expenses, ...transferRows]
+    const advanceRows = recoverables.map((entry) => ({
+      id: `advance-${entry.id}`,
+      date: entry.dateGiven,
+      title: `Advance — ${entry.partyName}`,
+      detail: getAccountName(entry.sourceAccountId),
+      amount: entry.originalAmount,
+      direction: 'out' as const,
+    }));
+
+    const repaymentRows = recoverableRepayments.map((entry) => ({
+      id: `recovery-${entry.id}`,
+      date: entry.date,
+      title: 'Recoverable Repayment',
+      detail: getAccountName(entry.accountId),
+      amount: entry.amount,
+      direction: 'in' as const,
+    }));
+
+    return [...income, ...expenses, ...transferRows, ...advanceRows, ...repaymentRows]
       .sort((a, b) => b.date.getTime() - a.date.getTime())
       .slice(0, 10);
-  }, [accounts, incomeEntries, expenseEntries, transfers]);
+  }, [accounts, incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments]);
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="min-w-0">
         <h1 className="text-2xl font-bold">Bank Balances</h1>
         <p className="text-fit text-sm text-muted-foreground">
-          Current balances across all active school, personal, and cash accounts.
+          Current balances across all accounts; archived historical accounts remain included.
         </p>
       </div>
 
@@ -169,19 +174,19 @@ export default function BankBalancesPage() {
       <div className="rounded-lg border bg-card">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h3 className="text-sm font-semibold">Account Balance Check</h3>
-          <span className="text-xs text-muted-foreground">{accountRows.length} active accounts</span>
+          <span className="text-xs text-muted-foreground">{accountRows.length} tracked accounts</span>
         </div>
 
         {accountRows.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
             <Landmark className="mb-3 h-10 w-10 text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">No active accounts found.</p>
+            <p className="text-sm text-muted-foreground">No accounts found.</p>
           </div>
         ) : (
           <div className="divide-y">
             {accountRows.map((account) => {
               const Icon = ACCOUNT_TYPE_ICON[account.type];
-              const movementTotal = account.income + account.transfersIn - account.expenses - account.transfersOut;
+              const movementTotal = account.net;
 
               return (
                 <div key={account.id} className="px-4 py-4">
@@ -193,7 +198,7 @@ export default function BankBalancesPage() {
                       <div className="min-w-0">
                         <p className="text-fit text-sm font-semibold">{account.name}</p>
                         <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          {ACCOUNT_TYPE_LABEL[account.type]}
+                          {ACCOUNT_TYPE_LABEL[account.type]}{account.isArchived ? ' • Archived' : ''}
                         </p>
                       </div>
                     </div>
@@ -210,11 +215,13 @@ export default function BankBalancesPage() {
                     </div>
                   </div>
 
-                  <div className="mt-3 grid gap-2 text-xs sm:grid-cols-4">
+                  <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">
                     <MiniMetric label="Income" value={account.income} tone="income" />
                     <MiniMetric label="Expenses" value={account.expenses} tone="expense" />
                     <MiniMetric label="Transfers In" value={account.transfersIn} tone="income" />
                     <MiniMetric label="Transfers Out" value={account.transfersOut} tone="expense" />
+                    <MiniMetric label="Advances Given" value={account.advancesGiven} tone="expense" />
+                    <MiniMetric label="Recoveries" value={account.recoveriesReceived} tone="income" />
                   </div>
                 </div>
               );

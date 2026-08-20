@@ -14,7 +14,7 @@ const ACCOUNT_TYPE_ICON: Record<string, string> = {
 };
 
 export default function TransfersPage() {
-  const { accounts, transfers, getAccountBalance } = useFinanceStore();
+  const { accounts, transfers, incomeEntries, expenseEntries, recoverables, recoverableRepayments, getAccountBalance } = useFinanceStore();
   const [showModal, setShowModal] = useState(false);
   const [editEntry, setEditEntry] = useState<Transfer | undefined>();
 
@@ -23,7 +23,7 @@ export default function TransfersPage() {
       ...acc,
       balance: getAccountBalance(acc.id),
     }));
-  }, [accounts, getAccountBalance]);
+  }, [accounts, incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments, getAccountBalance]);
 
   const sortedTransfers = [...transfers].sort((a, b) => b.date.getTime() - a.date.getTime());
 

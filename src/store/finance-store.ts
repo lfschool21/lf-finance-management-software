@@ -6,6 +6,8 @@ import type {
   ExpenseEntry,
   Transfer,
   RecurringTemplate,
+  Recoverable,
+  RecoverableRepayment,
 } from '@/types/finance';
 import { FIXED_EXPENSE_CATEGORIES } from '@/types/finance';
 import * as academicYearsService from '@/services/academicYears';
@@ -14,9 +16,18 @@ import * as incomeService from '@/services/income';
 import * as expensesService from '@/services/expenses';
 import * as transfersService from '@/services/transfers';
 import * as recurringService from '@/services/recurring';
+import * as recoverablesService from '@/services/recoverables';
+import {
+  findAcademicYearForDate,
+  getAccountBalance as calculateAccountBalance,
+  getAccountMovement,
+  getFeeOutstanding,
+  isRecurringDue,
+  parseDateOnly,
+} from '@/lib/finance-domain';
 
 function toDate(d: string | Date): Date {
-  return d instanceof Date ? d : new Date(d);
+  return d instanceof Date ? d : parseDateOnly(d);
 }
 
 function mapAcademicYear(row: academicYearsService.DbAcademicYear): AcademicYear {
@@ -70,6 +81,7 @@ function mapExpense(row: expensesService.DbExpenseEntry): ExpenseEntry {
     academicYearId: row.academic_year_id,
     expenseType: row.expense_type,
     category: row.category,
+    subCategory: row.sub_category || '',
     amount: Number(row.amount),
     date: toDate(row.date),
     accountId: row.account_id,
@@ -77,6 +89,28 @@ function mapExpense(row: expensesService.DbExpenseEntry): ExpenseEntry {
     tags: row.tags || [],
     isRecurringInstance: row.is_recurring_instance,
     recurringTemplateId: row.recurring_template_id,
+  };
+}
+
+function mapRecoverable(row: recoverablesService.DbRecoverable): Recoverable {
+  return {
+    id: row.id,
+    partyName: row.party_name,
+    originalAmount: Number(row.original_amount),
+    dateGiven: toDate(row.date_given),
+    sourceAccountId: row.source_account_id,
+    notes: row.notes || '',
+  };
+}
+
+function mapRepayment(row: recoverablesService.DbRecoverableRepayment): RecoverableRepayment {
+  return {
+    id: row.id,
+    recoverableId: row.recoverable_id,
+    amount: Number(row.amount),
+    date: toDate(row.date),
+    accountId: row.account_id,
+    notes: row.notes || '',
   };
 }
 
@@ -135,6 +169,8 @@ interface FinanceState {
   expenseEntries: ExpenseEntry[];
   transfers: Transfer[];
   recurringTemplates: RecurringTemplate[];
+  recoverables: Recoverable[];
+  recoverableRepayments: RecoverableRepayment[];
   currentYearId: string;
   isSetupComplete: boolean;
   isLoading: boolean;
@@ -151,8 +187,15 @@ interface FinanceState {
   updateExpense: (id: string, data: Partial<expensesService.ExpenseInsert>) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   addTransfer: (data: transfersService.TransferInsert) => Promise<void>;
-  updateTransfer: (id: string, data: Partial<transfersService.TransferInsert>) => Promise<void>;
+  updateTransfer: (id: string, data: transfersService.TransferInsert) => Promise<void>;
   deleteTransfer: (id: string) => Promise<void>;
+  addRecoverable: (data: recoverablesService.RecoverableInsert) => Promise<void>;
+  updateRecoverable: (id: string, data: Partial<recoverablesService.RecoverableInsert>) => Promise<void>;
+  deleteRecoverable: (id: string) => Promise<void>;
+  addRecoverableRepayment: (data: recoverablesService.RepaymentInsert) => Promise<void>;
+  updateRecoverableRepayment: (id: string, data: Partial<recoverablesService.RepaymentInsert>) => Promise<void>;
+  deleteRecoverableRepayment: (id: string) => Promise<void>;
+  getAccountNetMovement: (accountId: string) => ReturnType<typeof getAccountMovement>;
   getAccountBalance: (accountId: string) => number;
   getTotalBalance: () => number;
   getYearForDate: (date: Date) => AcademicYear | undefined;
@@ -173,6 +216,8 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
   expenseEntries: [],
   transfers: [],
   recurringTemplates: [],
+  recoverables: [],
+  recoverableRepayments: [],
   currentYearId: '',
   isSetupComplete: false,
   isLoading: false,
@@ -192,14 +237,18 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
   init: async () => {
     set({ isLoading: true, error: null });
     try {
-      const [yearsRes, accRes, incRes, expRes, trRes, recRes] = await Promise.all([
+      const [yearsRes, accRes, incRes, expRes, trRes, recRes, recoverablesRes] = await Promise.all([
         academicYearsService.getAll(),
-        accountsService.getAll(),
+        accountsService.getAllIncludingArchived(),
         incomeService.getAll(),
         expensesService.getAll(),
         transfersService.getAll(),
         recurringService.getAll(),
+        recoverablesService.getAll(),
       ]);
+
+      const loadError = yearsRes.error || accRes.error || incRes.error || expRes.error || trRes.error || recRes.error || recoverablesRes.error;
+      if (loadError) throw loadError;
 
       const years = (yearsRes.data || []).map(mapAcademicYear);
       const accounts = (accRes.data || []).map(mapAccount);
@@ -207,12 +256,12 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       const expenseEntries = (expRes.data || []).map(mapExpense);
       const transfers = (trRes.data || []).map(mapTransfer);
       const recurringTemplates = (recRes.data || []).map(mapRecurring);
+      const recoverables = (recoverablesRes.recoverables || []).map(mapRecoverable);
+      const recoverableRepayments = (recoverablesRes.repayments || []).map(mapRepayment);
 
       const today = new Date();
-      const activeYear = years.find(
-        (y) => today >= y.startDate && today <= y.endDate
-      );
-      const currentYearId = activeYear?.id || years[0]?.id || '';
+      const activeYear = findAcademicYearForDate(years, today);
+      const currentYearId = activeYear?.id || '';
 
       // Check pending recurring
       const currentMonth = today.getMonth();
@@ -222,31 +271,25 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       for (const template of recurringTemplates) {
         if (!template.isActive) continue;
 
+        const templateEntries = expenseEntries
+          .filter((entry) => entry.isRecurringInstance && entry.recurringTemplateId === template.id)
+          .sort((a, b) => b.date.getTime() - a.date.getTime());
+        const latestRecordedDate = templateEntries[0]?.date || null;
+        const effectiveLastDate = template.lastGeneratedDate && latestRecordedDate
+          ? (template.lastGeneratedDate > latestRecordedDate ? template.lastGeneratedDate : latestRecordedDate)
+          : template.lastGeneratedDate || latestRecordedDate;
+
         const hasThisMonth = expenseEntries.some(
           (e) =>
             e.isRecurringInstance &&
-            e.category === template.category &&
+            e.recurringTemplateId === template.id &&
             e.date.getMonth() === currentMonth &&
             e.date.getFullYear() === currentFullYear
         );
 
-        if (!hasThisMonth) {
-          let needsGeneration = true;
-          if (template.recurrenceInterval === 'bimonthly' && template.lastGeneratedDate) {
-            const lastGen = template.lastGeneratedDate;
-            const monthsDiff = (currentFullYear - lastGen.getFullYear()) * 12 + (currentMonth - lastGen.getMonth());
-            if (monthsDiff < 2) needsGeneration = false;
-          }
-
-          if (needsGeneration) {
-            // Find last month's amount for reference
-            const prevEntries = expenseEntries
-              .filter((e) => e.isRecurringInstance && e.category === template.category)
-              .sort((a, b) => b.date.getTime() - a.date.getTime());
-            const lastAmount = prevEntries[0]?.amount || template.defaultAmount;
-
-            pendingRecurringItems.push({ template, lastAmount });
-          }
+        if (!hasThisMonth && isRecurringDue(template.recurrenceInterval, effectiveLastDate, today)) {
+          const lastAmount = templateEntries[0]?.amount || template.defaultAmount;
+          pendingRecurringItems.push({ template, lastAmount });
         }
       }
 
@@ -261,8 +304,10 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         expenseEntries,
         transfers,
         recurringTemplates,
+        recoverables,
+        recoverableRepayments,
         currentYearId,
-        isSetupComplete: accounts.length > 0,
+        isSetupComplete: accounts.length > 0 && years.length > 0,
         isLoading: false,
         isInitialized: true,
         error: null,
@@ -350,53 +395,67 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     }));
   },
 
+  addRecoverable: async (data) => {
+    const { data: created, error } = await recoverablesService.createRecoverable(data);
+    if (error || !created) throw error || new Error('Failed to create recoverable');
+    set((state) => ({ recoverables: [mapRecoverable(created), ...state.recoverables] }));
+  },
+  updateRecoverable: async (id, data) => {
+    const { data: updated, error } = await recoverablesService.updateRecoverable(id, data);
+    if (error || !updated) throw error || new Error('Failed to update recoverable');
+    set((state) => ({ recoverables: state.recoverables.map((r) => r.id === id ? mapRecoverable(updated) : r) }));
+  },
+  deleteRecoverable: async (id) => {
+    const { error } = await recoverablesService.deleteRecoverable(id);
+    if (error) throw error;
+    set((state) => ({ recoverables: state.recoverables.filter((r) => r.id !== id) }));
+  },
+  addRecoverableRepayment: async (data) => {
+    const { data: created, error } = await recoverablesService.createRepayment(data);
+    if (error || !created) throw error || new Error('Failed to create repayment');
+    set((state) => ({ recoverableRepayments: [mapRepayment(created), ...state.recoverableRepayments] }));
+  },
+  updateRecoverableRepayment: async (id, data) => {
+    const { data: updated, error } = await recoverablesService.updateRepayment(id, data);
+    if (error || !updated) throw error || new Error('Failed to update repayment');
+    set((state) => ({ recoverableRepayments: state.recoverableRepayments.map((r) => r.id === id ? mapRepayment(updated) : r) }));
+  },
+  deleteRecoverableRepayment: async (id) => {
+    const { error } = await recoverablesService.deleteRepayment(id);
+    if (error) throw error;
+    set((state) => ({ recoverableRepayments: state.recoverableRepayments.filter((r) => r.id !== id) }));
+  },
+
+  getAccountNetMovement: (accountId: string) => {
+    const state = get();
+    return getAccountMovement(accountId, state.incomeEntries, state.expenseEntries, state.transfers, state.recoverables, state.recoverableRepayments);
+  },
+
   getAccountBalance: (accountId: string) => {
     const state = get();
     const account = state.accounts.find((a) => a.id === accountId);
     if (!account) return 0;
-    const income = state.incomeEntries
-      .filter((i) => i.accountId === accountId)
-      .reduce((s, i) => s + i.amount, 0);
-    const expenses = state.expenseEntries
-      .filter((e) => e.accountId === accountId)
-      .reduce((s, e) => s + e.amount, 0);
-    const transfersIn = state.transfers
-      .filter((t) => t.toAccountId === accountId)
-      .reduce((s, t) => s + t.amount, 0);
-    const transfersOut = state.transfers
-      .filter((t) => t.fromAccountId === accountId)
-      .reduce((s, t) => s + t.amount, 0);
-    return account.startingBalance + income - expenses + transfersIn - transfersOut;
+    return calculateAccountBalance(account, get().getAccountNetMovement(accountId));
   },
 
   getTotalBalance: () => {
     const state = get();
     return state.accounts
-      .filter((a) => !a.isArchived)
       .reduce((sum, a) => sum + get().getAccountBalance(a.id), 0);
   },
 
   getYearForDate: (date: Date) => {
     const state = get();
-    return state.academicYears.find(
-      (y) => date >= y.startDate && date <= y.endDate
-    );
+    return findAcademicYearForDate(state.academicYears, date);
   },
 
   getYearProfitBreakdown: (yearId: string): YearProfitBreakdown => {
     const state = get();
     const fixedCats = FIXED_EXPENSE_CATEGORIES as readonly string[];
 
-    // Income rules:
-    //   INCLUDE: entries booked to this year that are NOT late collections
-    //   INCLUDE: late-collection entries whose originalYearId === this year (paid late, but belong here)
-    //   EXCLUDE: late-collection entries booked to this year but originalYearId !== this year
-    //            (those belong to the original year and must not inflate the booking year's income)
-    const yearIncome = state.incomeEntries.filter(
-      (i) =>
-        (i.academicYearId === yearId && !i.isLateCollection) ||
-        (i.isLateCollection && i.originalYearId === yearId)
-    );
+    // Profit is cash-period based. Late tuition affects the original fee obligation,
+    // but remains income in the academic year in which cash was received.
+    const yearIncome = state.incomeEntries.filter((i) => i.academicYearId === yearId);
     const totalIncome = yearIncome.reduce((s, i) => s + i.amount, 0);
 
     // School expenses only
@@ -479,23 +538,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       return { yearId, totalOwed: 0, collected: 0, remaining: 0, targetGap: 0, carryForward: 0 };
     }
 
-    const collected = state.incomeEntries
-      .filter(
-        (i) =>
-          i.category === 'Tuition Fees' &&
-          (
-            (i.academicYearId === yearId && !i.isLateCollection) ||
-            (i.isLateCollection && i.originalYearId === yearId)
-          )
-      )
-      .reduce((s, i) => s + i.amount, 0);
-
-    const carryForward = year.carryForwardFees || 0;
-    const targetGap = Math.max(0, year.targetTuitionFees - collected);
-    const totalOwed = year.targetTuitionFees + carryForward;
-    const remaining = Math.max(0, totalOwed - collected);
-
-    return { yearId, totalOwed, collected, remaining, targetGap, carryForward };
+    return { yearId, ...getFeeOutstanding(year, state.incomeEntries) };
   },
 
   getAllPendingTotal: () => {
@@ -504,17 +547,20 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
   },
 
   refreshAccounts: async () => {
-    const { data } = await accountsService.getAll();
+    const { data, error } = await accountsService.getAllIncludingArchived();
+    if (error) throw error;
     if (data) set({ accounts: data.map(mapAccount) });
   },
 
   refreshAcademicYears: async () => {
-    const { data } = await academicYearsService.getAll();
+    const { data, error } = await academicYearsService.getAll();
+    if (error) throw error;
     if (data) set({ academicYears: data.map(mapAcademicYear) });
   },
 
   refreshRecurringTemplates: async () => {
-    const { data } = await recurringService.getAll();
+    const { data, error } = await recurringService.getAll();
+    if (error) throw error;
     if (data) set({ recurringTemplates: data.map(mapRecurring) });
   },
 }));

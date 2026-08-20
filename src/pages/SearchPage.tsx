@@ -12,8 +12,12 @@ import { AddIncomeModal } from '@/components/AddIncomeModal';
 import { AddExpenseModal } from '@/components/AddExpenseModal';
 import { TransferModal } from '@/components/TransferModal';
 import type { IncomeEntry, ExpenseEntry, Transfer } from '@/types/finance';
+import type { Recoverable, RecoverableRepayment } from '@/types/finance';
+import { dateKey, incomeSource, INCOME_SOURCE_LABELS } from '@/lib/finance-domain';
+import { useNavigate } from 'react-router-dom';
 
 type SortKey = 'newest' | 'oldest' | 'highest' | 'lowest';
+const ALL_TYPES = ['income', 'school_expense', 'home_expense', 'transfer', 'recoverable_advance', 'recoverable_repayment'] as const;
 
 interface SearchResult {
   id: string;
@@ -21,12 +25,13 @@ interface SearchResult {
   label: string;
   desc: string;
   amount: number;
-  type: 'income' | 'school_expense' | 'home_expense' | 'transfer';
-  raw: IncomeEntry | ExpenseEntry | Transfer;
+  type: 'income' | 'school_expense' | 'home_expense' | 'transfer' | 'recoverable_advance' | 'recoverable_repayment';
+  raw: IncomeEntry | ExpenseEntry | Transfer | Recoverable | RecoverableRepayment;
 }
 
 export default function SearchPage() {
-  const { incomeEntries, expenseEntries, transfers, accounts, academicYears } = useFinanceStore();
+  const { incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments, accounts, academicYears } = useFinanceStore();
+  const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
@@ -35,7 +40,7 @@ export default function SearchPage() {
   const [dateTo, setDateTo] = useState('');
   const [amountMin, setAmountMin] = useState('');
   const [amountMax, setAmountMax] = useState('');
-  const [typeFilters, setTypeFilters] = useState<Set<string>>(new Set(['income', 'school_expense', 'home_expense', 'transfer']));
+  const [typeFilters, setTypeFilters] = useState<Set<string>>(new Set(ALL_TYPES));
   const [selectedAccountId, setSelectedAccountId] = useState('all');
   const [selectedYearId, setSelectedYearId] = useState('all');
   const [sortBy, setSortBy] = useState<SortKey>('newest');
@@ -56,8 +61,10 @@ export default function SearchPage() {
   const allCategories = useMemo(() => {
     const cats = new Set<string>();
     expenseEntries.forEach((e) => cats.add(e.category));
+    incomeEntries.forEach((entry) => cats.add(INCOME_SOURCE_LABELS[incomeSource(entry)]));
+    cats.add('Transfer'); cats.add('Recoverable Advance'); cats.add('Recoverable Repayment');
     return Array.from(cats).sort();
-  }, [expenseEntries]);
+  }, [expenseEntries, incomeEntries]);
 
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
 
@@ -72,7 +79,7 @@ export default function SearchPage() {
   const results = useMemo(() => {
     const q = query.toLowerCase().trim();
     const hasQuery = q.length >= 2;
-    const hasFilters = showFilters && (dateFrom || dateTo || amountMin || amountMax || selectedAccountId !== 'all' || selectedYearId !== 'all' || selectedCategories.size > 0 || typeFilters.size < 4);
+    const hasFilters = showFilters && (dateFrom || dateTo || amountMin || amountMax || selectedAccountId !== 'all' || selectedYearId !== 'all' || selectedCategories.size > 0 || typeFilters.size < ALL_TYPES.length);
 
     if (!hasQuery && !hasFilters) return [];
 
@@ -81,11 +88,13 @@ export default function SearchPage() {
     // Income entries
     if (typeFilters.has('income')) {
       incomeEntries.forEach((i) => {
-        const matchText = !hasQuery || [i.category, i.notes, ...(i.tags || [])].some((s) => (s || '').toLowerCase().includes(q));
+        const sourceLabel = INCOME_SOURCE_LABELS[incomeSource(i)];
+        const matchText = !hasQuery || [i.category, sourceLabel, i.notes, ...(i.tags || [])].some((s) => (s || '').toLowerCase().includes(q));
         if (!matchText) return;
+        if (selectedCategories.size > 0 && !selectedCategories.has(sourceLabel)) return;
         items.push({
-          id: i.id, date: i.date,
-          label: i.isLateCollection ? `Late Collection (${i.category})` : i.category,
+          id: `income-${i.id}`, date: i.date,
+          label: sourceLabel,
           desc: i.notes, amount: i.amount,
           type: 'income', raw: i,
         });
@@ -96,11 +105,11 @@ export default function SearchPage() {
     expenseEntries.forEach((e) => {
       const expType = e.expenseType === 'school' ? 'school_expense' : 'home_expense';
       if (!typeFilters.has(expType)) return;
-      const matchText = !hasQuery || [e.category, e.description, ...(e.tags || [])].some((s) => (s || '').toLowerCase().includes(q));
+      const matchText = !hasQuery || [e.category, e.subCategory, e.description, ...(e.tags || [])].some((s) => (s || '').toLowerCase().includes(q));
       if (!matchText) return;
       if (selectedCategories.size > 0 && !selectedCategories.has(e.category)) return;
       items.push({
-        id: e.id, date: e.date, label: e.category,
+        id: `expense-${e.id}`, date: e.date, label: e.subCategory ? `${e.category}: ${e.subCategory}` : e.category,
         desc: e.description, amount: e.amount,
         type: expType, raw: e,
       });
@@ -113,23 +122,43 @@ export default function SearchPage() {
         const toName = accounts.find((a) => a.id === t.toAccountId)?.name || '';
         const matchText = !hasQuery || [fromName, toName, t.notes, t.category].some((s) => (s || '').toLowerCase().includes(q));
         if (!matchText) return;
+        if (selectedCategories.size > 0 && !selectedCategories.has('Transfer')) return;
         items.push({
-          id: t.id, date: t.date, label: `${fromName} → ${toName}`,
+          id: `transfer-${t.id}`, date: t.date, label: `${fromName} → ${toName}`,
           desc: t.notes, amount: t.amount,
           type: 'transfer', raw: t,
         });
       });
     }
 
+    if (typeFilters.has('recoverable_advance')) {
+      recoverables.forEach((r) => {
+        const accountName = accounts.find((a) => a.id === r.sourceAccountId)?.name || '';
+        if (hasQuery && ![r.partyName, r.notes, accountName, 'recoverable advance'].some((s) => s.toLowerCase().includes(q))) return;
+        if (selectedCategories.size > 0 && !selectedCategories.has('Recoverable Advance')) return;
+        items.push({ id: `advance-${r.id}`, date: r.dateGiven, label: `Advance — ${r.partyName}`, desc: r.notes, amount: r.originalAmount, type: 'recoverable_advance', raw: r });
+      });
+    }
+    if (typeFilters.has('recoverable_repayment')) {
+      recoverableRepayments.forEach((r) => {
+        const parent = recoverables.find((advance) => advance.id === r.recoverableId);
+        const accountName = accounts.find((a) => a.id === r.accountId)?.name || '';
+        if (hasQuery && ![parent?.partyName || '', r.notes, accountName, 'recoverable repayment'].some((s) => s.toLowerCase().includes(q))) return;
+        if (selectedCategories.size > 0 && !selectedCategories.has('Recoverable Repayment')) return;
+        items.push({ id: `repayment-${r.id}`, date: r.date, label: `Repayment — ${parent?.partyName || 'Recoverable'}`, desc: r.notes, amount: r.amount, type: 'recoverable_repayment', raw: r });
+      });
+    }
+
     // Apply filters
-    if (dateFrom) items = items.filter((r) => r.date >= new Date(dateFrom));
-    if (dateTo) items = items.filter((r) => r.date <= new Date(dateTo));
+    if (dateFrom) items = items.filter((r) => dateKey(r.date) >= dateFrom);
+    if (dateTo) items = items.filter((r) => dateKey(r.date) <= dateTo);
     if (amountMin) items = items.filter((r) => r.amount >= parseFloat(amountMin));
     if (amountMax) items = items.filter((r) => r.amount <= parseFloat(amountMax));
 
     if (selectedAccountId !== 'all') {
       items = items.filter((r) => {
-        if ('accountId' in r.raw) return (r.raw as IncomeEntry | ExpenseEntry).accountId === selectedAccountId;
+        if ('accountId' in r.raw) return (r.raw as IncomeEntry | ExpenseEntry | RecoverableRepayment).accountId === selectedAccountId;
+        if ('sourceAccountId' in r.raw) return (r.raw as Recoverable).sourceAccountId === selectedAccountId;
         if ('fromAccountId' in r.raw) {
           const tr = r.raw as Transfer;
           return tr.fromAccountId === selectedAccountId || tr.toAccountId === selectedAccountId;
@@ -141,7 +170,8 @@ export default function SearchPage() {
     if (selectedYearId !== 'all') {
       items = items.filter((r) => {
         if ('academicYearId' in r.raw) return (r.raw as IncomeEntry | ExpenseEntry).academicYearId === selectedYearId;
-        return true;
+        const year = academicYears.find((candidate) => candidate.id === selectedYearId);
+        return !!year && dateKey(r.date) >= dateKey(year.startDate) && dateKey(r.date) <= dateKey(year.endDate);
       });
     }
 
@@ -154,12 +184,12 @@ export default function SearchPage() {
     }
 
     return items;
-  }, [query, showFilters, dateFrom, dateTo, amountMin, amountMax, typeFilters, selectedAccountId, selectedYearId, selectedCategories, sortBy, incomeEntries, expenseEntries, transfers, accounts]);
+  }, [query, showFilters, dateFrom, dateTo, amountMin, amountMax, typeFilters, selectedAccountId, selectedYearId, selectedCategories, sortBy, incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments, accounts, academicYears]);
 
   function clearFilters() {
     setDateFrom(''); setDateTo('');
     setAmountMin(''); setAmountMax('');
-    setTypeFilters(new Set(['income', 'school_expense', 'home_expense', 'transfer']));
+    setTypeFilters(new Set(ALL_TYPES));
     setSelectedAccountId('all');
     setSelectedYearId('all');
     setSelectedCategories(new Set());
@@ -169,6 +199,7 @@ export default function SearchPage() {
   function handleClick(r: SearchResult) {
     if (r.type === 'income') setEditIncome(r.raw as IncomeEntry);
     else if (r.type === 'transfer') setEditTransfer(r.raw as Transfer);
+    else if (r.type.startsWith('recoverable_')) navigate('/recoverables');
     else setEditExpense(r.raw as ExpenseEntry);
   }
 
@@ -177,6 +208,8 @@ export default function SearchPage() {
     school_expense: 'text-expense',
     home_expense: 'text-warning',
     transfer: 'text-primary',
+    recoverable_advance: 'text-warning',
+    recoverable_repayment: 'text-income',
   };
 
   const typeLabels: Record<string, string> = {
@@ -184,6 +217,8 @@ export default function SearchPage() {
     school_expense: 'School',
     home_expense: 'Home',
     transfer: 'Transfer',
+    recoverable_advance: 'Advance',
+    recoverable_repayment: 'Repayment',
   };
 
   return (
@@ -245,7 +280,7 @@ export default function SearchPage() {
           <div>
             <Label className="mb-2 block text-xs">Type</Label>
             <div className="flex flex-wrap gap-3">
-              {(['income', 'school_expense', 'home_expense', 'transfer'] as const).map((t) => (
+              {(['income', 'school_expense', 'home_expense', 'transfer', 'recoverable_advance', 'recoverable_repayment'] as const).map((t) => (
                 <label key={t} className="flex items-center gap-1.5 text-sm">
                   <Checkbox checked={typeFilters.has(t)} onCheckedChange={() => toggleType(t)} />
                   {typeLabels[t]}
@@ -340,7 +375,7 @@ export default function SearchPage() {
                 </p>
               </div>
               <span className={cn('money-fit max-w-[42%] text-right font-mono text-sm font-semibold', typeColors[r.type])}>
-                {r.type === 'income' ? '+' : r.type === 'transfer' ? '' : '-'}{formatINR(r.amount)}
+                {r.type === 'income' || r.type === 'recoverable_repayment' ? '+' : r.type === 'transfer' ? '' : '-'}{formatINR(r.amount)}
               </span>
             </div>
           ))}

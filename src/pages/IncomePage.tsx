@@ -13,6 +13,7 @@ import { toast } from '@/hooks/use-toast';
 import * as academicYearsService from '@/services/academicYears';
 import type { IncomeEntry } from '@/types/finance';
 import { TUITION_CATEGORY, LUNCH_CATEGORY, OTHER_CATEGORY } from '@/types/finance';
+import { getIncomeBreakdown, isPreviousAcademicYear, parseNonNegativeAmount } from '@/lib/finance-domain';
 
 export default function IncomePage() {
   const { incomeEntries, academicYears, currentYearId, refreshAcademicYears, getPendingForYear } = useFinanceStore();
@@ -33,23 +34,23 @@ export default function IncomePage() {
   const currentYear = academicYears.find((y) => y.id === currentYearId);
 
   const stats = useMemo(() => {
-    const yearIncome = incomeEntries.filter(
-      (i) => i.academicYearId === currentYearId && !i.isLateCollection
-    );
+    const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
     const tuitionTotal = yearIncome
-      .filter((i) => i.category === TUITION_CATEGORY)
+      .filter((i) => i.category === TUITION_CATEGORY && !i.isLateCollection)
       .reduce((s, i) => s + i.amount, 0);
-    const totalIncome = yearIncome.reduce((s, i) => s + i.amount, 0);
+    const incomeBreakdown = getIncomeBreakdown(yearIncome);
+    const totalIncome = incomeBreakdown.total;
     const target = currentYear?.targetTuitionFees || 0;
 
     // Build per-category breakdown for the summary tab
-    const catMap = new Map<string, number>();
-    yearIncome.forEach((i) => catMap.set(i.category, (catMap.get(i.category) || 0) + i.amount));
-    const categoryBreakdown = Array.from(catMap.entries())
-      .map(([cat, amount]) => ({ cat, amount }))
-      .sort((a, b) => b.amount - a.amount);
+    const categoryBreakdown = [
+      { cat: 'Current-Year Tuition Fees', amount: incomeBreakdown.currentTuition },
+      { cat: 'Previous-Year / Old Fee Collections', amount: incomeBreakdown.oldFees },
+      { cat: 'Lunch Fees', amount: incomeBreakdown.lunch },
+      { cat: 'Investment / Extra Income', amount: incomeBreakdown.other },
+    ].filter((item) => item.amount > 0);
 
-    return { tuitionTotal, totalIncome, target, categoryBreakdown };
+    return { tuitionTotal, totalIncome, target, categoryBreakdown, incomeBreakdown };
   }, [incomeEntries, currentYearId, currentYear]);
 
   const pendingYears = useMemo(() => {
@@ -68,14 +69,15 @@ export default function IncomePage() {
           yearsOverdue,
         };
       })
-      .filter((y) => y.totalRemaining > 0);
-  }, [academicYears, incomeEntries, getPendingForYear]);
+      .filter((y) => y.totalRemaining > 0 && (!currentYear || isPreviousAcademicYear(y, currentYear)));
+  }, [academicYears, currentYear, getPendingForYear]);
 
   // Fixed tabs — no dynamic category discovery needed
   const filteredEntries = useMemo(() => {
     const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
     if (tab === 'all') return yearIncome;
-    if (tab === 'tuition') return yearIncome.filter((i) => i.category === TUITION_CATEGORY);
+    if (tab === 'tuition') return yearIncome.filter((i) => i.category === TUITION_CATEGORY && !i.isLateCollection);
+    if (tab === 'old') return yearIncome.filter((i) => i.category === TUITION_CATEGORY && i.isLateCollection);
     if (tab === 'lunch')   return yearIncome.filter((i) => i.category === LUNCH_CATEGORY);
     if (tab === 'other')   return yearIncome.filter((i) => i.category === OTHER_CATEGORY);
     return [];
@@ -105,11 +107,14 @@ export default function IncomePage() {
 
   async function saveTarget() {
     if (!currentYearId) return;
+    const target = parseNonNegativeAmount(targetValue || '0');
+    if (target === null) { toast({ title: 'Enter a non-negative target', variant: 'destructive' }); return; }
     setTargetSaving(true);
     try {
-      await academicYearsService.update(currentYearId, {
-        target_tuition_fees: parseFloat(targetValue) || 0,
+      const { error } = await academicYearsService.update(currentYearId, {
+        target_tuition_fees: target,
       });
+      if (error) throw error;
       await refreshAcademicYears();
       toast({ title: '✅ Target updated' });
       setShowTargetModal(false);
@@ -127,11 +132,14 @@ export default function IncomePage() {
 
   async function saveCarry() {
     if (!carryYearId) return;
+    const carry = parseNonNegativeAmount(carryValue || '0');
+    if (carry === null) { toast({ title: 'Enter a non-negative carry-forward amount', variant: 'destructive' }); return; }
     setCarrySaving(true);
     try {
-      await academicYearsService.update(carryYearId, {
-        carry_forward_fees: parseFloat(carryValue) || 0,
+      const { error } = await academicYearsService.update(carryYearId, {
+        carry_forward_fees: carry,
       });
+      if (error) throw error;
       await refreshAcademicYears();
       toast({ title: '✅ Carry-forward fees updated' });
       setShowCarryModal(false);
@@ -192,9 +200,10 @@ export default function IncomePage() {
         <div className="overflow-x-auto">
           <TabsList className="w-max min-w-full sm:w-auto">
             <TabsTrigger value="all">All Income</TabsTrigger>
-            <TabsTrigger value="tuition">Tuition Fees</TabsTrigger>
+            <TabsTrigger value="tuition">Current Tuition</TabsTrigger>
+            <TabsTrigger value="old">Old Fees</TabsTrigger>
             <TabsTrigger value="lunch">Lunch Fees</TabsTrigger>
-            <TabsTrigger value="other">Other Income</TabsTrigger>
+            <TabsTrigger value="other">Investment / Extra</TabsTrigger>
             <TabsTrigger value="pending">
               Pending Collections
               {pendingYears.length > 0 && (
@@ -224,7 +233,14 @@ export default function IncomePage() {
 
         <TabsContent value="tuition" className="mt-4">
           <TransactionList
-            entries={incomeEntries.filter((i) => i.academicYearId === currentYearId && i.category === TUITION_CATEGORY)}
+            entries={incomeEntries.filter((i) => i.academicYearId === currentYearId && i.category === TUITION_CATEGORY && !i.isLateCollection)}
+            onEdit={openEdit}
+          />
+        </TabsContent>
+
+        <TabsContent value="old" className="mt-4">
+          <TransactionList
+            entries={incomeEntries.filter((i) => i.academicYearId === currentYearId && i.category === TUITION_CATEGORY && i.isLateCollection)}
             onEdit={openEdit}
           />
         </TabsContent>
@@ -346,7 +362,7 @@ export default function IncomePage() {
         </TabsContent>
       </Tabs>
 
-      <AddIncomeModal isOpen={showModal} onClose={() => setShowModal(false)} editEntry={editEntry} />
+      <AddIncomeModal isOpen={showModal} onClose={() => setShowModal(false)} editEntry={editEntry} presetLateYearId={lateYearId} />
 
       {/* Edit Target Modal */}
       <Dialog open={showTargetModal} onOpenChange={setShowTargetModal}>

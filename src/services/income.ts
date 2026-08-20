@@ -1,11 +1,12 @@
-import { supabase } from './supabase';
+import { requireUserId, supabase } from './supabase';
+import type { IncomeDbType } from '@/types/finance';
 
 export interface DbIncomeEntry {
   id: string;
   user_id: string;
   academic_year_id: string;
   /** Stores the category name directly, e.g. 'Tuition Fees', 'Lunch Fees', 'Donation / Grant' */
-  type: string;
+  type: IncomeDbType;
   amount: number;
   date: string;
   account_id: string;
@@ -19,14 +20,8 @@ export interface DbIncomeEntry {
 
 export type IncomeInsert = Omit<DbIncomeEntry, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 
-async function getUserId() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  return user.id;
-}
-
 export async function getAll(yearId?: string) {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   let query = supabase
     .from('income_entries')
     .select('*')
@@ -38,7 +33,7 @@ export async function getAll(yearId?: string) {
 }
 
 export async function create(input: IncomeInsert) {
-  const userId = await getUserId();
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('income_entries')
     .insert({ ...input, user_id: userId })

@@ -30,7 +30,7 @@ export default function RegisterPage() {
     const { error: authError } = await signUp(email, password);
     if (authError) {
       if (authError.message.includes('already registered') || authError.message.includes('User already registered')) {
-        setError('Registration is disabled. Only one account is allowed.');
+        setError('An account with this email is already registered. Sign in instead.');
       } else {
         setError(authError.message);
       }
@@ -57,8 +57,9 @@ export default function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Email</label>
+            <label htmlFor="register-email" className="text-sm font-medium">Email</label>
             <Input
+              id="register-email"
               type="email"
               placeholder="you@example.com"
               value={email}
@@ -67,8 +68,9 @@ export default function RegisterPage() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Password</label>
+            <label htmlFor="register-password" className="text-sm font-medium">Password</label>
             <Input
+              id="register-password"
               type="password"
               placeholder="Min 8 characters"
               value={password}
@@ -78,8 +80,9 @@ export default function RegisterPage() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Confirm Password</label>
+            <label htmlFor="register-confirm-password" className="text-sm font-medium">Confirm Password</label>
             <Input
+              id="register-confirm-password"
               type="password"
               placeholder="Re-enter password"
               value={confirmPassword}

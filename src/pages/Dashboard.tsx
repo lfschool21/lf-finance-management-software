@@ -28,6 +28,7 @@ import { useNavigate } from 'react-router-dom';
 import { useFinanceStore } from '@/store/finance-store';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { TUITION_CATEGORY } from '@/types/finance';
+import { getIncomeBreakdown, isPreviousAcademicYear } from '@/lib/finance-domain';
 import { StatCard } from '@/components/StatCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -54,13 +55,11 @@ const CHART_COLORS = [
   'hsl(330, 70%, 50%)', 'hsl(60, 80%, 45%)',
 ];
 
-const MONTHS = ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
-
 export default function Dashboard() {
   const {
     incomeEntries, expenseEntries, accounts, academicYears, currentYearId,
     transfers, getTotalBalance, getYearProfitBreakdown, getProjectedProfit,
-    pendingRecurringItems, getPendingForYear,
+    pendingRecurringItems, getPendingForYear, recoverables, recoverableRepayments,
   } = useFinanceStore();
   const navigate = useNavigate();
 
@@ -72,7 +71,7 @@ export default function Dashboard() {
   const currentYear = academicYears.find((y) => y.id === currentYearId);
 
   const stats = useMemo(() => {
-    // breakdown now excludes late-collection entries from the current year's income
+    // School profit is cash-period based, so old-fee cash received this year is included.
     const breakdown = getYearProfitBreakdown(currentYearId);
     const projected = getProjectedProfit(currentYearId);
 
@@ -84,7 +83,7 @@ export default function Dashboard() {
     const feeProgress = target > 0 ? Math.round((tuitionCollected / target) * 100) : 0;
 
     // Previous years pending — uses shared helper that accounts for late payments + carry-forward
-    const prevYears = academicYears.filter((y) => y.id !== currentYearId);
+    const prevYears = currentYear ? academicYears.filter((y) => isPreviousAcademicYear(y, currentYear)) : [];
     const prevPending = prevYears.reduce((s, y) => s + getPendingForYear(y.id).remaining, 0);
 
     // Per-year breakdown for the previous-year pending progress bars
@@ -133,22 +132,27 @@ export default function Dashboard() {
       homeExpenses,
       projectedIncome,
       projectedExpenses,
+      incomeBreakdown: getIncomeBreakdown(incomeEntries.filter((entry) => entry.academicYearId === currentYearId)),
     };
-  }, [incomeEntries, expenseEntries, accounts, academicYears, currentYearId, currentYear, transfers, getTotalBalance, getYearProfitBreakdown, getProjectedProfit, getPendingForYear]);
+  }, [incomeEntries, expenseEntries, accounts, academicYears, currentYearId, currentYear, transfers, recoverables, recoverableRepayments, getTotalBalance, getYearProfitBreakdown, getProjectedProfit, getPendingForYear]);
 
   const monthlyData = useMemo(() => {
-    // Only direct income entries for this year (exclude late collections — they belong to original years)
-    const yearIncome = incomeEntries.filter(
-      (i) => i.academicYearId === currentYearId && !i.isLateCollection
-    );
+    if (!currentYear) return [];
+    const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
     const yearExpenses = expenseEntries.filter((e) => e.academicYearId === currentYearId && e.expenseType === 'school');
-    return MONTHS.map((month, idx) => {
-      const monthNum = (idx + 5) % 12;
-      const inc = yearIncome.filter((i) => i.date.getMonth() === monthNum).reduce((s, i) => s + i.amount, 0);
-      const exp = yearExpenses.filter((e) => e.date.getMonth() === monthNum).reduce((s, e) => s + e.amount, 0);
-      return { month, income: inc, expenses: exp };
-    }).filter((d) => d.income > 0 || d.expenses > 0);
-  }, [incomeEntries, expenseEntries, currentYearId]);
+    const buckets: { month: string; year: number; monthIndex: number }[] = [];
+    const cursor = new Date(currentYear.startDate.getFullYear(), currentYear.startDate.getMonth(), 1);
+    const end = new Date(currentYear.endDate.getFullYear(), currentYear.endDate.getMonth(), 1);
+    while (cursor <= end && buckets.length < 24) {
+      buckets.push({ month: cursor.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }), year: cursor.getFullYear(), monthIndex: cursor.getMonth() });
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return buckets.map((bucket) => ({
+      month: bucket.month,
+      income: yearIncome.filter((i) => i.date.getFullYear() === bucket.year && i.date.getMonth() === bucket.monthIndex).reduce((s, i) => s + i.amount, 0),
+      expenses: yearExpenses.filter((e) => e.date.getFullYear() === bucket.year && e.date.getMonth() === bucket.monthIndex).reduce((s, e) => s + e.amount, 0),
+    })).filter((item) => item.income > 0 || item.expenses > 0);
+  }, [incomeEntries, expenseEntries, currentYearId, currentYear]);
 
   const categoryData = useMemo(() => {
     const yearExpenses = expenseEntries.filter((e) => e.academicYearId === currentYearId && e.expenseType === 'school');
@@ -171,9 +175,21 @@ export default function Dashboard() {
         id: e.id, date: e.date, category: e.category, amount: e.amount,
         isIncome: false, type: e.expenseType, isLate: false,
       })),
+      ...transfers.map((t) => ({
+        id: `transfer-${t.id}`, date: t.date, category: 'Transfer', amount: t.amount,
+        isIncome: false, type: 'transfer', isLate: false,
+      })),
+      ...recoverables.map((r) => ({
+        id: `advance-${r.id}`, date: r.dateGiven, category: `Advance — ${r.partyName}`, amount: r.originalAmount,
+        isIncome: false, type: 'advance', isLate: false,
+      })),
+      ...recoverableRepayments.map((r) => ({
+        id: `recovery-${r.id}`, date: r.date, category: 'Recoverable Repayment', amount: r.amount,
+        isIncome: true, type: 'recovery', isLate: false,
+      })),
     ];
     return all.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 10);
-  }, [incomeEntries, expenseEntries]);
+  }, [incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments]);
 
   const schoolExpensesTotal = stats.fixedExpenses + stats.extraExpenses;
   const overallPosition = stats.netProfit - stats.homeExpenses;
@@ -211,9 +227,9 @@ export default function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        <StatCard title="Total Income" value={formatINRAbbr(stats.totalIncome)} fullValue={formatINR(stats.totalIncome)} icon={IndianRupee} variant="income" subtitle="Tuition + Lunch" />
+        <StatCard title="Cash Income" value={formatINRAbbr(stats.totalIncome)} fullValue={formatINR(stats.totalIncome)} icon={IndianRupee} variant="income" subtitle="All income received" />
         <StatCard title="School Expenses" value={formatINRAbbr(schoolExpensesTotal)} fullValue={formatINR(schoolExpensesTotal)} icon={TrendingDown} variant="expense" />
-        <StatCard title="Net Profit" value={formatINRAbbr(stats.netProfit)} fullValue={formatINR(stats.netProfit)} icon={BarChart3} variant={stats.netProfit >= 0 ? 'profit' : 'expense'} subtitle="School income − expenses" />
+        <StatCard title="School Net Profit" value={formatINRAbbr(stats.netProfit)} fullValue={formatINR(stats.netProfit)} icon={BarChart3} variant={stats.netProfit >= 0 ? 'profit' : 'expense'} subtitle="School income − school expenses" />
         <StatCard title="All Balances" value={formatINRAbbr(stats.totalBalance)} fullValue={formatINR(stats.totalBalance)} icon={Landmark} variant="balance" />
         <StatCard title="Gross Profit" value={formatINRAbbr(stats.grossProfit)} fullValue={formatINR(stats.grossProfit)} icon={TrendingUp} variant="cumulative" subtitle="Income − Fixed" />
         <div className="relative">
@@ -243,6 +259,16 @@ export default function Dashboard() {
               <p className="mt-2 text-muted-foreground">Assumes spending continues at the current monthly rate.</p>
             </PopoverContent>
           </Popover>
+        </div>
+      </div>
+
+      <div className="rounded-lg border bg-card p-4">
+        <h3 className="mb-3 text-sm font-semibold">Income Breakdown</h3>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <MiniIncome label="Current Tuition" value={stats.incomeBreakdown.currentTuition} />
+          <MiniIncome label="Old Fee Collections" value={stats.incomeBreakdown.oldFees} />
+          <MiniIncome label="Lunch Fees" value={stats.incomeBreakdown.lunch} />
+          <MiniIncome label="Investment / Extra" value={stats.incomeBreakdown.other} />
         </div>
       </div>
 
@@ -407,14 +433,14 @@ export default function Dashboard() {
             {recentTransactions.map((tx) => (
               <div key={tx.id} className="flex min-w-0 items-center gap-3 px-4 py-3">
                 <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg', tx.isIncome ? 'bg-income/10' : 'bg-expense/10')}>
-                  {tx.isIncome ? <TrendingUp className="h-4 w-4 text-income" /> : tx.type === 'school' ? <School className="h-4 w-4 text-expense" /> : <Home className="h-4 w-4 text-expense" />}
+                  {tx.isIncome ? <TrendingUp className="h-4 w-4 text-income" /> : tx.type === 'school' ? <School className="h-4 w-4 text-expense" /> : tx.type === 'home' ? <Home className="h-4 w-4 text-expense" /> : <ArrowLeftRight className="h-4 w-4 text-primary" />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-fit text-sm font-medium">{tx.category}</p>
                   <p className="text-fit text-xs text-muted-foreground">{tx.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                 </div>
                 <span className={cn('money-fit max-w-[42%] text-right font-mono text-sm font-semibold', tx.isIncome ? 'text-income' : 'text-expense')}>
-                  {tx.isIncome ? '+' : '-'}{formatINR(tx.amount)}
+                  {tx.type === 'transfer' ? '' : tx.isIncome ? '+' : '-'}{formatINR(tx.amount)}
                 </span>
               </div>
             ))}
@@ -428,4 +454,8 @@ export default function Dashboard() {
       <RecurringReviewModal isOpen={showRecurring} onClose={() => setShowRecurring(false)} />
     </div>
   );
+}
+
+function MiniIncome({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-lg bg-income/5 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="money-fit font-mono text-sm font-semibold text-income">{formatINR(value)}</p></div>;
 }

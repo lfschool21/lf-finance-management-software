@@ -14,6 +14,7 @@ import { Loader2, X, School, Home, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SCHOOL_EXPENSE_CATEGORIES, HOME_EXPENSE_CATEGORIES } from '@/types/finance';
 import type { ExpenseEntry } from '@/types/finance';
+import { dateKey, parseDateOnly, parsePositiveAmount } from '@/lib/finance-domain';
 
 const MONTHLY_CATEGORIES = ['Land Rent', 'Electricity Bill', 'Internet & Phone Bill'];
 
@@ -31,7 +32,7 @@ type DuplicateWarning = {
 };
 
 export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: AddExpenseModalProps) {
-  const { accounts, expenseEntries, currentYearId, addExpense, updateExpense, deleteExpense, getYearForDate } = useFinanceStore();
+  const { accounts, expenseEntries, addExpense, updateExpense, deleteExpense, getYearForDate } = useFinanceStore();
 
   const [step, setStep] = useState(1);
   const [expenseType, setExpenseType] = useState<'school' | 'home' | ''>('');
@@ -49,15 +50,18 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const isEdit = !!editEntry;
-  const activeAccounts = accounts.filter((a) => !a.isArchived);
+  const activeAccounts = useMemo(
+    () => accounts.filter((account) => !account.isArchived || account.id === editEntry?.accountId),
+    [accounts, editEntry?.accountId],
+  );
   const categories = expenseType === 'school' ? SCHOOL_EXPENSE_CATEGORIES : HOME_EXPENSE_CATEGORIES;
 
   const detectedYear = useMemo(() => {
     if (!date) return undefined;
-    return getYearForDate(new Date(date));
+    return getYearForDate(parseDateOnly(date));
   }, [date, getYearForDate]);
 
-  const academicYearId = detectedYear?.id || currentYearId;
+  const academicYearId = detectedYear?.id || '';
 
   useEffect(() => {
     if (isOpen) {
@@ -65,6 +69,7 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
         setStep(3);
         setExpenseType(editEntry.expenseType);
         setCategory(editEntry.category);
+        setSubCategory(editEntry.subCategory);
         setAmount(editEntry.amount.toString());
         setDate(editEntry.date.toISOString().split('T')[0]);
         setAccountId(editEntry.accountId);
@@ -85,12 +90,12 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
       setTagInput('');
       setDuplicateWarning(null);
     }
-  }, [isOpen, editEntry]);
+  }, [isOpen, editEntry, activeAccounts]);
 
   function validate(): boolean {
     const errs: Record<string, string> = {};
-    const amt = parseFloat(amount);
-    if (!amount || isNaN(amt) || amt <= 0) errs.amount = 'Amount must be greater than zero';
+    const amt = parsePositiveAmount(amount);
+    if (amt === null) errs.amount = 'Enter a finite amount greater than zero';
     if (!date) errs.date = 'Date is required';
     if (!accountId) errs.accountId = 'Select an account';
     if (!academicYearId) errs.year = 'No academic year found for this date';
@@ -108,8 +113,8 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
   }
 
   function checkDuplicates(): DuplicateWarning | null {
-    const amt = parseFloat(amount);
-    const entryDate = new Date(date);
+    const amt = parsePositiveAmount(amount)!;
+    const entryDate = parseDateOnly(date);
     const entryMonth = entryDate.getMonth();
     const entryYear = entryDate.getFullYear();
 
@@ -120,7 +125,7 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
 
     // Check 1: Exact duplicate
     const exact = entries.find(
-      (e) => e.date.toISOString().split('T')[0] === date && e.amount === amt && e.category === category
+      (e) => dateKey(e.date) === date && e.amount === amt && e.category === category
     );
     if (exact) {
       return {
@@ -188,14 +193,14 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
         expense_type: expenseType as 'school' | 'home',
         category,
         sub_category: isOther ? subCategory : null,
-        amount: parseFloat(amount),
+        amount: parsePositiveAmount(amount)!,
         date,
         academic_year_id: academicYearId,
         account_id: accountId,
         description: description || null,
         tags: tags.length > 0 ? tags : null,
-        is_recurring_instance: false,
-        recurring_template_id: null,
+        is_recurring_instance: editEntry?.isRecurringInstance ?? false,
+        recurring_template_id: editEntry?.recurringTemplateId ?? null,
       };
 
       if (isEdit && editEntry) {
@@ -338,7 +343,7 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
                   <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
                   <SelectContent>
                     {activeAccounts.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                        <SelectItem key={a.id} value={a.id}>{a.name}{a.isArchived ? ' (Archived)' : ''}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
