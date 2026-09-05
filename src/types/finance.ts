@@ -5,6 +5,7 @@ export type TransferCategory = 'school_to_personal' | 'personal_to_school' | 'ca
 export type RecurrenceInterval = 'monthly' | 'bimonthly' | 'quarterly';
 export type IncomeDbType = 'tuition' | 'lunch' | 'other';
 export type RecoverableStatus = 'outstanding' | 'partially_recovered' | 'recovered';
+export type PaymentMethod = 'cash' | 'upi' | 'bank_transfer' | 'cheque' | 'other';
 
 export const SCHOOL_EXPENSE_CATEGORIES = [
   'Salary & Wages',
@@ -74,6 +75,9 @@ export interface IncomeEntry {
   accountId: string;
   isLateCollection: boolean;
   originalYearId: string | null;
+  studentEnrollmentId: string | null;
+  paymentMethod: PaymentMethod | null;
+  paymentReference: string;
   notes: string;
   tags: string[];
 }

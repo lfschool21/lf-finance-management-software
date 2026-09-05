@@ -5,11 +5,11 @@ export default defineConfig({
   fullyParallel: true,
   retries: 0,
   reporter: 'list',
-  use: { baseURL: 'http://127.0.0.1:8080', trace: 'retain-on-failure' },
+  use: { baseURL: 'http://127.0.0.1:4174', trace: 'retain-on-failure' },
   webServer: {
-    command: 'npm run dev:test',
-    url: 'http://127.0.0.1:8080',
-    reuseExistingServer: true,
+    command: 'npm run dev:test -- --port 4174 --strictPort',
+    url: 'http://127.0.0.1:4174',
+    reuseExistingServer: false,
     timeout: 120_000,
   },
   projects: [

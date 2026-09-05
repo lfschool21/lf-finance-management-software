@@ -1,5 +1,6 @@
 import { requireUserId, supabase } from './supabase';
 import type { IncomeDbType } from '@/types/finance';
+import type { PaymentMethod } from '@/types/finance';
 
 export interface DbIncomeEntry {
   id: string;
@@ -12,6 +13,9 @@ export interface DbIncomeEntry {
   account_id: string;
   is_late_collection: boolean;
   original_year_id: string | null;
+  student_enrollment_id: string | null;
+  payment_method: PaymentMethod | null;
+  payment_reference: string | null;
   notes: string | null;
   tags: string[] | null;
   created_at: string;

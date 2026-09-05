@@ -25,7 +25,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { dateKey, getIncomeBreakdown, incomeSource, INCOME_SOURCE_LABELS } from '@/lib/finance-domain';
+import { dateKey, getFeeOutstandingAsOf, getIncomeBreakdown, incomeSource, INCOME_SOURCE_LABELS } from '@/lib/finance-domain';
+import { useStudentStore } from '@/store/student-store';
+import { getStudentFeeSummary, getStudentPreviousPending, groupRosterByClass, summarizeRoster } from '@/lib/student-fees';
+import { MEDIUM_LABELS } from '@/types/students';
 
 const COLORS = [
   'hsl(210, 52%, 25%)', 'hsl(160, 84%, 39%)', 'hsl(0, 84%, 60%)',
@@ -38,6 +41,7 @@ export default function ReportsPage() {
     incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments, accounts, academicYears, currentYearId,
     getYearProfitBreakdown, getAllTimeCumulativeProfit, getPendingForYear,
   } = useFinanceStore();
+  const { students, enrollments } = useStudentStore();
 
   const [selectedYearId, setSelectedYearId] = useState(currentYearId);
   const [compareYear1, setCompareYear1] = useState(currentYearId);
@@ -50,6 +54,41 @@ export default function ReportsPage() {
   const selectedYear = academicYears.find((y) => y.id === selectedYearId);
   const breakdown = useMemo(() => getYearProfitBreakdown(selectedYearId), [selectedYearId, getYearProfitBreakdown, incomeEntries, expenseEntries]);
   const yearlyIncomeBreakdown = useMemo(() => getIncomeBreakdown(incomeEntries.filter((entry) => entry.academicYearId === selectedYearId)), [incomeEntries, selectedYearId]);
+  const selectedYearIsComplete = selectedYear ? dateKey(selectedYear.endDate) < dateKey(new Date()) : false;
+  const feeStatusAtCutoff = useMemo(
+    () => selectedYear ? getFeeOutstandingAsOf(selectedYear, incomeEntries, selectedYearIsComplete ? selectedYear.endDate : new Date()) : null,
+    [incomeEntries, selectedYear, selectedYearIsComplete],
+  );
+  const currentFeeStatus = useMemo(
+    () => selectedYear ? getPendingForYear(selectedYear.id) : null,
+    [getPendingForYear, incomeEntries, selectedYear],
+  );
+  const studentReport = useMemo(() => {
+    const roster = enrollments.filter((item) => item.academicYearId === selectedYearId && item.status === 'active');
+    const rows = roster.map((enrollment) => {
+      const student = students.find((item) => item.id === enrollment.studentId)!;
+      const fees = getStudentFeeSummary(enrollment, incomeEntries);
+      return { student, enrollment, fees, previousPending: getStudentPreviousPending(enrollment.studentId, selectedYearId, enrollments, incomeEntries) };
+    }).filter((item) => item.student).sort((a,b) => b.fees.pending + b.previousPending - a.fees.pending - a.previousPending);
+    const actualPayments = incomeEntries.filter((entry) => entry.academicYearId === selectedYearId && entry.studentEnrollmentId);
+    return { rows, summary: summarizeRoster(roster, incomeEntries), classes: groupRosterByClass(roster, incomeEntries),
+      english: summarizeRoster(roster.filter((item) => item.medium === 'english'), incomeEntries),
+      gujarati: summarizeRoster(roster.filter((item) => item.medium === 'gujarati'), incomeEntries),
+      previousReceived: actualPayments.filter((entry) => entry.isLateCollection).reduce((sum, entry) => sum + entry.amount, 0),
+      cashActual: actualPayments.filter((entry) => entry.paymentMethod === 'cash').reduce((sum, entry) => sum + entry.amount, 0),
+      upiActual: actualPayments.filter((entry) => entry.paymentMethod === 'upi').reduce((sum, entry) => sum + entry.amount, 0),
+      otherActual: actualPayments.filter((entry) => entry.paymentMethod && !['cash','upi'].includes(entry.paymentMethod)).reduce((sum, entry) => sum + entry.amount, 0),
+      unknownActual: actualPayments.filter((entry) => !entry.paymentMethod).reduce((sum, entry) => sum + entry.amount, 0),
+      previousPending: rows.reduce((sum, row) => sum + row.previousPending, 0) };
+  }, [enrollments, incomeEntries, selectedYearId, students]);
+
+  function exportStudentFeesCsv() {
+    const headers = ['Student Name','Admission Number','Class','Medium','Current Fee','Current Collected','Current Pending','Previous-Year Pending','Cash','UPI','Total Pending'];
+    const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const lines = [headers, ...studentReport.rows.map(({ student, enrollment, fees, previousPending }) => [student.fullName,student.admissionNumber,enrollment.className,MEDIUM_LABELS[enrollment.medium],fees.obligation,fees.collected,fees.pending,previousPending,fees.cash,fees.upi,fees.pending+previousPending])].map((row) => row.map(escape).join(','));
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = `student-fees-${selectedYear?.label || 'report'}.csv`; link.click(); URL.revokeObjectURL(url);
+  }
 
   const schoolCategoryBreakdown = useMemo(() => {
     const map = new Map<string, number>();
@@ -126,7 +165,7 @@ export default function ReportsPage() {
         .filter((e) => e.academicYearId === y.id && e.expenseType === 'home')
         .reduce((s, e) => s + e.amount, 0);
       cumulative += b.netProfit;
-      const pending = getPendingForYear(y.id);
+      const pending = getFeeOutstandingAsOf(y, incomeEntries, y.endDate);
       return {
         year: y.label,
         income: b.totalIncome,
@@ -153,11 +192,11 @@ export default function ReportsPage() {
     const pctChange = (a: number, b: number) => b === 0 ? 0 : Math.round(((a - b) / Math.abs(b)) * 100);
 
     const items = [
-      { label: 'Total Income', v1: b1.totalIncome, v2: b2.totalIncome, pct: pctChange(b1.totalIncome, b2.totalIncome) },
-      { label: 'Fixed Expenses', v1: b1.fixedExpenses, v2: b2.fixedExpenses, pct: pctChange(b1.fixedExpenses, b2.fixedExpenses) },
-      { label: 'Extra Expenses', v1: b1.extraExpenses, v2: b2.extraExpenses, pct: pctChange(b1.extraExpenses, b2.extraExpenses) },
-      { label: 'Gross Profit', v1: b1.grossProfit, v2: b2.grossProfit, pct: pctChange(b1.grossProfit, b2.grossProfit) },
-      { label: 'Net Profit', v1: b1.netProfit, v2: b2.netProfit, pct: pctChange(b1.netProfit, b2.netProfit) },
+      { label: 'Total Cash Income', v1: b1.totalIncome, v2: b2.totalIncome, pct: pctChange(b1.totalIncome, b2.totalIncome), desirableDirection: 'up' as const },
+      { label: 'Fixed School Expenses', v1: b1.fixedExpenses, v2: b2.fixedExpenses, pct: pctChange(b1.fixedExpenses, b2.fixedExpenses), desirableDirection: 'down' as const },
+      { label: 'Extra School Expenses', v1: b1.extraExpenses, v2: b2.extraExpenses, pct: pctChange(b1.extraExpenses, b2.extraExpenses), desirableDirection: 'down' as const },
+      { label: 'Income After Fixed School Expenses', v1: b1.grossProfit, v2: b2.grossProfit, pct: pctChange(b1.grossProfit, b2.grossProfit), desirableDirection: 'up' as const },
+      { label: 'School Profit', v1: b1.netProfit, v2: b2.netProfit, pct: pctChange(b1.netProfit, b2.netProfit), desirableDirection: 'up' as const },
     ];
 
     const allCats = new Set<string>();
@@ -247,17 +286,17 @@ export default function ReportsPage() {
         startY: 50,
         head: [['Item', 'Amount (₹)']],
         body: [
-          ['Total Income', formatINR(breakdown.totalIncome)],
+          ['Total Cash Income', formatINR(breakdown.totalIncome)],
           ['Current Tuition', formatINR(yearlyIncomeBreakdown.currentTuition)],
-          ['Old Fee Collections', formatINR(yearlyIncomeBreakdown.oldFees)],
+          ['Previous-Year Fees Received', formatINR(yearlyIncomeBreakdown.oldFees)],
           ['Lunch Fees', formatINR(yearlyIncomeBreakdown.lunch)],
           ['Investment / Extra Income', formatINR(yearlyIncomeBreakdown.other)],
           ['Fixed Expenses', formatINR(breakdown.fixedExpenses)],
-          ['Gross Profit', formatINR(breakdown.grossProfit)],
+          ['Income After Fixed School Expenses', formatINR(breakdown.grossProfit)],
           ['Extra Expenses', formatINR(breakdown.extraExpenses)],
-          ['Net Profit (School)', formatINR(breakdown.netProfit)],
+          ['School Profit', formatINR(breakdown.netProfit)],
           ['Home Expenses', formatINR(homeExpensesTotal)],
-          ['Overall Position', formatINR(breakdown.netProfit - homeExpensesTotal)],
+          ['Cash Surplus After Home/Personal Expenses', formatINR(breakdown.netProfit - homeExpensesTotal)],
         ],
       });
 
@@ -283,11 +322,12 @@ export default function ReportsPage() {
       </div>
 
       <Tabs defaultValue="monthly">
-        <TabsList className="w-full sm:w-auto">
+        <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
           <TabsTrigger value="monthly">Monthly</TabsTrigger>
           <TabsTrigger value="yearly">Yearly P&L</TabsTrigger>
           <TabsTrigger value="alltime">All-Time</TabsTrigger>
           <TabsTrigger value="compare">Compare</TabsTrigger>
+          <TabsTrigger value="students">Student Fees</TabsTrigger>
           <TabsTrigger value="expenses">Expense Analytics</TabsTrigger>
         </TabsList>
 
@@ -304,11 +344,11 @@ export default function ReportsPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-5">
-            <MiniCard label="Income" value={formatINR(monthlySummary.income)} color="text-income" />
+            <MiniCard label="Cash Income Received" value={formatINR(monthlySummary.income)} color="text-income" />
             <MiniCard label="School Expenses" value={formatINR(monthlySummary.school)} color="text-expense" />
             <MiniCard label="Home Expenses" value={formatINR(monthlySummary.home)} color="text-warning" />
             <MiniCard label="School Profit" value={formatINR(monthlySummary.schoolProfit)} color={monthlySummary.schoolProfit >= 0 ? 'text-primary' : 'text-expense'} subtitle="Income − School" />
-            <MiniCard label="Overall Position" value={formatINR(monthlySummary.net)} color={monthlySummary.net >= 0 ? 'text-warning' : 'text-expense'} subtitle="After all expenses" />
+            <MiniCard label="Cash Surplus After Home/Personal Expenses" value={formatINR(monthlySummary.net)} color={monthlySummary.net >= 0 ? 'text-warning' : 'text-expense'} subtitle="School profit − home/personal expenses" />
           </div>
 
           <IncomeBreakdownGrid breakdown={monthlySummary.incomeBreakdown} />
@@ -369,24 +409,24 @@ export default function ReportsPage() {
           <div className="rounded-lg border bg-card p-5">
             <h3 className="mb-4 text-sm font-semibold">Profit & Loss — AY {selectedYear?.label}</h3>
             <div className="space-y-3">
-              <PLRow label="Total Income" value={breakdown.totalIncome} type="income" />
+              <PLRow label="Total Cash Income" value={breakdown.totalIncome} type="income" />
               {breakdown.fixedBreakdown.map((f) => (
                 <PLRow key={f.category} label={f.category} value={f.amount} type="expense" indent />
               ))}
               <div className="border-t pt-2">
-                <PLRow label="Gross Profit" value={breakdown.grossProfit} type={breakdown.grossProfit >= 0 ? 'income' : 'expense'} bold />
+                <PLRow label="Income After Fixed School Expenses" value={breakdown.grossProfit} type={breakdown.grossProfit >= 0 ? 'income' : 'expense'} bold />
               </div>
               {breakdown.extraBreakdown.map((e) => (
                 <PLRow key={e.category} label={e.category} value={e.amount} type="expense" indent />
               ))}
               <div className="border-t border-dashed pt-2">
-                <PLRow label="SCHOOL NET PROFIT" value={breakdown.netProfit} type={breakdown.netProfit >= 0 ? 'income' : 'expense'} bold />
+                <PLRow label="SCHOOL PROFIT" value={breakdown.netProfit} type={breakdown.netProfit >= 0 ? 'income' : 'expense'} bold />
               </div>
               {homeExpensesTotal > 0 && (
                 <>
                   <PLRow label="Personal/Home Expenses" value={homeExpensesTotal} type="expense" indent />
                   <div className="border-t pt-2">
-                    <PLRow label="OVERALL POSITION" value={breakdown.netProfit - homeExpensesTotal} type={breakdown.netProfit - homeExpensesTotal >= 0 ? 'income' : 'expense'} bold />
+                    <PLRow label="CASH SURPLUS AFTER HOME/PERSONAL EXPENSES" value={breakdown.netProfit - homeExpensesTotal} type={breakdown.netProfit - homeExpensesTotal >= 0 ? 'income' : 'expense'} bold />
                   </div>
                 </>
               )}
@@ -396,37 +436,41 @@ export default function ReportsPage() {
           <IncomeBreakdownGrid breakdown={yearlyIncomeBreakdown} />
 
           {/* Fee status */}
-          {selectedYear && (() => {
-            const pending = getPendingForYear(selectedYearId);
-            const pct = pending.totalOwed > 0
-              ? Math.min(100, Math.round((pending.collected / pending.totalOwed) * 100))
+          {selectedYear && feeStatusAtCutoff && currentFeeStatus && (() => {
+            const pct = feeStatusAtCutoff.totalOwed > 0
+              ? Math.min(100, Math.round((feeStatusAtCutoff.collected / feeStatusAtCutoff.totalOwed) * 100))
               : 0;
             return (
               <div className="rounded-lg border bg-card p-4">
-                <h3 className="mb-2 text-sm font-semibold">Fee Collection Status</h3>
+                <h3 className="text-sm font-semibold">Fee Collection Status {selectedYearIsComplete ? 'at AY End' : 'as of Today'}</h3>
+                <p className="mb-3 text-xs text-muted-foreground">{selectedYearIsComplete ? `Historical snapshot as of ${selectedYear.endDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}. Later payments do not change this snapshot.` : 'Current progress for this active academic year.'}</p>
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Collected</span>
-                    <span className="font-mono font-medium text-income">{formatINR(pending.collected)}</span>
+                    <span className="text-muted-foreground">Collected by AY End</span>
+                    <span className="font-mono font-medium text-income">{formatINR(feeStatusAtCutoff.collected)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Target (this year)</span>
                     <span className="font-mono font-medium">{formatINR(selectedYear.targetTuitionFees)}</span>
                   </div>
-                  {pending.carryForward > 0 && (
+                  {feeStatusAtCutoff.carryForward > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Carry-forward (prev year)</span>
-                      <span className="font-mono font-medium text-warning">{formatINR(pending.carryForward)}</span>
+                      <span className="text-muted-foreground">Additional Outstanding Fee Balance</span>
+                      <span className="font-mono font-medium text-warning">{formatINR(feeStatusAtCutoff.carryForward)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-semibold">
-                    <span className="text-muted-foreground">Total Pending</span>
-                    <span className="font-mono text-warning">{formatINR(pending.remaining)}</span>
+                    <span className="text-muted-foreground">Outstanding at AY End</span>
+                    <span className="font-mono text-warning">{formatINR(feeStatusAtCutoff.remaining)}</span>
                   </div>
                   <div className="h-2 rounded-full bg-muted">
                     <div className="h-2 rounded-full bg-income transition-all" style={{ width: `${Math.min(100, pct)}%` }} />
                   </div>
                   <p className="text-xs text-muted-foreground">{pct}% collected</p>
+                  {selectedYearIsComplete && <div className="mt-3 flex flex-col gap-1 border-t pt-3 text-sm min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+                    <span className="text-muted-foreground">Current status of this AY's fee obligation — as of today</span>
+                    <span className="font-mono font-semibold text-warning">{formatINR(currentFeeStatus.remaining)} outstanding</span>
+                  </div>}
                 </div>
               </div>
             );
@@ -509,7 +553,7 @@ export default function ReportsPage() {
                   <th className="p-3 text-right">School Exp.</th>
                   <th className="p-3 text-right">Home Exp.</th>
                   <th className="p-3 text-right">School Profit</th>
-                  <th className="p-3 text-right">Overall</th>
+                  <th className="p-3 text-right">Cash Surplus</th>
                   <th className="p-3 text-right">Cumulative</th>
                   <th className="p-3 text-right">Status</th>
                 </tr>
@@ -600,7 +644,7 @@ export default function ReportsPage() {
                         <p className="text-[10px] text-muted-foreground">AY {comparison.y2Label}</p>
                         <p className="font-mono text-sm font-medium">{formatINRAbbr(item.v2)}</p>
                       </div>
-                      <span className={`ml-auto text-sm font-bold ${item.pct > 0 ? 'text-expense' : item.pct < 0 ? 'text-income' : 'text-muted-foreground'}`}>
+                      <span className={`ml-auto text-sm font-bold ${item.pct === 0 ? 'text-muted-foreground' : (item.desirableDirection === 'up' ? item.pct > 0 : item.pct < 0) ? 'text-income' : 'text-expense'}`}>
                         {item.pct > 0 ? '↑' : item.pct < 0 ? '↓' : '—'}{Math.abs(item.pct)}%
                       </span>
                     </div>
@@ -642,6 +686,15 @@ export default function ReportsPage() {
               Select two different years to compare.
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="students" className="mt-4 space-y-4">
+          <div className="flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between"><Select value={selectedYearId} onValueChange={setSelectedYearId}><SelectTrigger className="w-full min-[420px]:w-48"><SelectValue /></SelectTrigger><SelectContent>{academicYears.map((year) => <SelectItem key={year.id} value={year.id}>AY {year.label}</SelectItem>)}</SelectContent></Select><Button variant="outline" onClick={exportStudentFeesCsv}><Download className="mr-2 h-4 w-4"/>Export Student Fees CSV</Button></div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MiniCard label="Active Students" value={String(studentReport.summary.totalStudents)} color="text-primary"/><MiniCard label="Student Fee Obligation" value={formatINR(studentReport.summary.obligation)} color="text-primary"/><MiniCard label="Current Fees Pending" value={formatINR(studentReport.summary.pending)} color="text-warning"/><MiniCard label="Previous-Year Fees Pending" value={formatINR(studentReport.previousPending)} color="text-warning"/><MiniCard label="Fully Paid Students" value={String(studentReport.summary.fullyPaidStudents)} color="text-income"/><MiniCard label="Previous-Year Fees Received This AY" value={formatINR(studentReport.previousReceived)} color="text-income"/><MiniCard label="Cash Payments Recorded in App" value={formatINR(studentReport.cashActual)} color="text-income"/><MiniCard label="UPI Payments Recorded in App" value={formatINR(studentReport.upiActual)} color="text-income"/><MiniCard label="Bank / Cheque / Other" value={formatINR(studentReport.otherActual)} color="text-primary"/><MiniCard label="Unknown / Not Recorded" value={formatINR(studentReport.unknownActual)} color="text-muted-foreground"/></div>
+          <div className="grid gap-3 md:grid-cols-2">{([['English Medium',studentReport.english],['Gujarati Medium',studentReport.gujarati]] as const).map(([label,value]) => <div key={label} className="rounded-lg border bg-card p-4"><div className="flex items-center justify-between"><h3 className="font-semibold">{label}</h3><span className="text-sm">{value.totalStudents} students</span></div><div className="mt-3 grid grid-cols-3 gap-2 text-xs"><span>Obligation<strong className="money-fit block font-mono text-sm">{formatINR(value.obligation)}</strong></span><span>Collected<strong className="money-fit block font-mono text-sm text-income">{formatINR(value.collected)}</strong></span><span>Pending<strong className="money-fit block font-mono text-sm text-warning">{formatINR(value.pending)}</strong></span></div><p className="mt-2 text-xs text-muted-foreground">{value.obligation ? Math.round(value.collected/value.obligation*100) : 0}% collected</p></div>)}</div>
+          <div className="rounded-lg border bg-card"><div className="border-b p-4"><h3 className="font-semibold">Fees by Class</h3></div><div className="overflow-auto"><table className="w-full min-w-[680px] text-sm"><thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="p-3">Class</th><th>Students</th><th>Total Fee</th><th>Collected</th><th>Pending</th><th>Collection %</th></tr></thead><tbody>{studentReport.classes.map((item) => <tr key={item.className} className="border-b last:border-0"><td className="p-3 font-medium">{item.className}</td><td>{item.totalStudents} <span className="text-xs text-muted-foreground">({item.english} Eng · {item.gujarati} Guj)</span></td><td>{formatINR(item.obligation)}</td><td className="text-income">{formatINR(item.collected)}</td><td className="text-warning">{formatINR(item.pending)}</td><td>{item.obligation ? Math.round(item.collected/item.obligation*100) : 0}%</td></tr>)}</tbody></table></div></div>
+          <div className="rounded-lg border bg-card"><div className="border-b p-4"><h3 className="font-semibold">Pending Student Fees</h3><p className="text-xs text-muted-foreground">Sorted by highest total pending</p></div><div className="overflow-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="p-3">Student</th><th>Class</th><th>Medium</th><th>Current Pending</th><th>Previous Pending</th><th>Total Pending</th></tr></thead><tbody>{studentReport.rows.filter((item) => item.fees.pending + item.previousPending > 0).map(({ student,enrollment,fees,previousPending }) => <tr key={enrollment.id} className="border-b last:border-0"><td className="p-3 font-medium">{student.fullName}<span className="block text-xs font-normal text-muted-foreground">{student.admissionNumber || 'No admission number'}</span></td><td>{enrollment.className}</td><td>{MEDIUM_LABELS[enrollment.medium]}</td><td>{formatINR(fees.pending)}</td><td>{formatINR(previousPending)}</td><td className="font-semibold text-warning">{formatINR(fees.pending+previousPending)}</td></tr>)}</tbody></table></div></div>
+          <p className="text-xs text-muted-foreground">Cash and UPI figures include only real finance transactions recorded in the application. Student collected totals also include clearly separated imported opening history.</p>
         </TabsContent>
 
         {/* Expense Analytics — FIX 5 */}
@@ -758,7 +811,7 @@ function IncomeBreakdownGrid({ breakdown }: { breakdown: ReturnType<typeof getIn
       <h3 className="mb-3 text-sm font-semibold">Cash Income Breakdown</h3>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MiniCard label="Current Tuition" value={formatINR(breakdown.currentTuition)} color="text-income" />
-        <MiniCard label="Old Fee Collections" value={formatINR(breakdown.oldFees)} color="text-income" />
+        <MiniCard label="Previous-Year Fees Received" value={formatINR(breakdown.oldFees)} color="text-income" />
         <MiniCard label="Lunch Fees" value={formatINR(breakdown.lunch)} color="text-income" />
         <MiniCard label="Investment / Extra" value={formatINR(breakdown.other)} color="text-income" />
       </div>

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search as SearchIcon, SlidersHorizontal, X, ArrowUpDown } from 'lucide-react';
+import { Search as SearchIcon, SlidersHorizontal, X } from 'lucide-react';
 import { useFinanceStore } from '@/store/finance-store';
 import { formatINR } from '@/utils/currency';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import type { IncomeEntry, ExpenseEntry, Transfer } from '@/types/finance';
 import type { Recoverable, RecoverableRepayment } from '@/types/finance';
 import { dateKey, incomeSource, INCOME_SOURCE_LABELS } from '@/lib/finance-domain';
 import { useNavigate } from 'react-router-dom';
+import { useStudentStore } from '@/store/student-store';
 
 type SortKey = 'newest' | 'oldest' | 'highest' | 'lowest';
 const ALL_TYPES = ['income', 'school_expense', 'home_expense', 'transfer', 'recoverable_advance', 'recoverable_repayment'] as const;
@@ -31,6 +32,7 @@ interface SearchResult {
 
 export default function SearchPage() {
   const { incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments, accounts, academicYears } = useFinanceStore();
+  const { students, enrollments } = useStudentStore();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -89,13 +91,16 @@ export default function SearchPage() {
     if (typeFilters.has('income')) {
       incomeEntries.forEach((i) => {
         const sourceLabel = INCOME_SOURCE_LABELS[incomeSource(i)];
-        const matchText = !hasQuery || [i.category, sourceLabel, i.notes, ...(i.tags || [])].some((s) => (s || '').toLowerCase().includes(q));
+        const enrollment = enrollments.find((item) => item.id === i.studentEnrollmentId);
+        const student = students.find((item) => item.id === enrollment?.studentId);
+        const account = accounts.find((item) => item.id === i.accountId);
+        const matchText = !hasQuery || [i.category, sourceLabel, i.notes, student?.fullName, student?.admissionNumber, enrollment?.className, i.paymentMethod, account?.name, ...(i.tags || [])].some((s) => (s || '').toLowerCase().includes(q));
         if (!matchText) return;
         if (selectedCategories.size > 0 && !selectedCategories.has(sourceLabel)) return;
         items.push({
           id: `income-${i.id}`, date: i.date,
-          label: sourceLabel,
-          desc: i.notes, amount: i.amount,
+          label: student?.fullName || sourceLabel,
+          desc: student ? `${sourceLabel} · ${i.paymentMethod?.replace('_', ' ') || 'Unknown / Not Recorded'} · ${account?.name || 'Unknown account'}` : i.notes, amount: i.amount,
           type: 'income', raw: i,
         });
       });
@@ -184,7 +189,7 @@ export default function SearchPage() {
     }
 
     return items;
-  }, [query, showFilters, dateFrom, dateTo, amountMin, amountMax, typeFilters, selectedAccountId, selectedYearId, selectedCategories, sortBy, incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments, accounts, academicYears]);
+  }, [query, showFilters, dateFrom, dateTo, amountMin, amountMax, typeFilters, selectedAccountId, selectedYearId, selectedCategories, sortBy, incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments, accounts, academicYears, enrollments, students]);
 
   function clearFilters() {
     setDateFrom(''); setDateTo('');
@@ -209,7 +214,7 @@ export default function SearchPage() {
     home_expense: 'text-warning',
     transfer: 'text-primary',
     recoverable_advance: 'text-warning',
-    recoverable_repayment: 'text-income',
+    recoverable_repayment: 'text-primary',
   };
 
   const typeLabels: Record<string, string> = {
@@ -218,8 +223,11 @@ export default function SearchPage() {
     home_expense: 'Home',
     transfer: 'Transfer',
     recoverable_advance: 'Advance',
-    recoverable_repayment: 'Repayment',
+    recoverable_repayment: 'Recoverable Repayment',
   };
+  const activeFilterCount = Number(!!dateFrom) + Number(!!dateTo) + Number(!!amountMin) + Number(!!amountMax)
+    + Number(selectedAccountId !== 'all') + Number(selectedYearId !== 'all') + selectedCategories.size
+    + Number(typeFilters.size < ALL_TYPES.length);
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -229,24 +237,26 @@ export default function SearchPage() {
         <div className="relative flex-1">
           <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search transactions, categories, notes..."
+            placeholder="Search transactions, student, admission number..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="pl-9"
           />
           {query && (
-            <button onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2">
+            <button type="button" aria-label="Clear search" onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <X className="h-4 w-4 text-muted-foreground" />
             </button>
           )}
         </div>
         <Button
           variant="outline"
-          size="icon"
           onClick={() => setShowFilters(!showFilters)}
-          className={cn(showFilters && 'bg-accent')}
+          className={cn('gap-1.5 px-3', showFilters && 'bg-accent')}
+          aria-expanded={showFilters}
         >
           <SlidersHorizontal className="h-4 w-4" />
+          <span className="hidden min-[380px]:inline">Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
+          <span className="sr-only min-[380px]:hidden">Show filters{activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}</span>
         </Button>
       </div>
 
@@ -301,7 +311,7 @@ export default function SearchPage() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Academic Year</Label>
+              <Label className="text-xs">Transaction Academic Year</Label>
               <Select value={selectedYearId} onValueChange={setSelectedYearId}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -357,9 +367,10 @@ export default function SearchPage() {
       {results.length > 0 && (
         <div className="divide-y rounded-lg border bg-card">
           {results.map((r) => (
-            <div
+            <button
+              type="button"
               key={r.id}
-              className="flex min-w-0 cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+              className="flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               onClick={() => handleClick(r)}
             >
               <div className="min-w-0 flex-1">
@@ -372,12 +383,13 @@ export default function SearchPage() {
                 <p className="text-fit text-xs text-muted-foreground">
                   {r.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                   {r.desc && ` • ${r.desc}`}
+                  {r.type === 'income' && (r.raw as IncomeEntry).isLateCollection && ` • For AY ${academicYears.find((year) => year.id === (r.raw as IncomeEntry).originalYearId)?.label || '—'}`}
                 </p>
               </div>
               <span className={cn('money-fit max-w-[42%] text-right font-mono text-sm font-semibold', typeColors[r.type])}>
                 {r.type === 'income' || r.type === 'recoverable_repayment' ? '+' : r.type === 'transfer' ? '' : '-'}{formatINR(r.amount)}
               </span>
-            </div>
+            </button>
           ))}
         </div>
       )}

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { TransferModal } from '@/components/TransferModal';
 import type { Transfer } from '@/types/finance';
+import { Link } from 'react-router-dom';
 
 const ACCOUNT_TYPE_ICON: Record<string, string> = {
   school_bank: '🏫',
@@ -50,6 +51,7 @@ export default function TransfersPage() {
       </div>
 
       <div className="grid gap-3 min-[420px]:grid-cols-2 lg:grid-cols-3">
+        <div className="col-span-full flex items-center justify-between"><h2 className="text-sm font-semibold">Active Account Balances</h2><Link className="text-xs text-primary hover:underline" to="/balances">View full balance reconciliation →</Link></div>
         {accountBalances.map((acc) => (
           <div key={acc.id} className="rounded-lg border bg-card p-4">
             <div className="flex items-center gap-2">
@@ -78,9 +80,10 @@ export default function TransfersPage() {
         ) : (
           <div className="divide-y rounded-lg border bg-card">
             {sortedTransfers.map((t) => (
-              <div
+              <button
+                type="button"
                 key={t.id}
-                className="flex min-w-0 cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+                className="flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 onClick={() => openEdit(t)}
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
@@ -98,7 +101,7 @@ export default function TransfersPage() {
                   </p>
                 </div>
                 <span className="money-fit max-w-[42%] text-right font-mono text-sm font-semibold">{formatINR(t.amount)}</span>
-              </div>
+              </button>
             ))}
           </div>
         )}

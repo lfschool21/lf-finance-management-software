@@ -99,12 +99,53 @@ export function getFeeCollected(entries: IncomeEntry[], yearId: string, excludeE
     .reduce((sum, entry) => sum + entry.amount, 0);
 }
 
+/**
+ * Returns payments applied to an academic-year fee obligation up to a specific
+ * date. This keeps historical reports stable when an older balance is paid in
+ * a later academic year.
+ */
+export function getFeeCollectedAsOf(
+  entries: IncomeEntry[],
+  yearId: string,
+  cutoffDate: Date | string,
+  excludeEntryId?: string,
+): number {
+  const cutoff = dateKey(cutoffDate);
+  return entries
+    .filter((entry) =>
+      entry.id !== excludeEntryId &&
+      dateKey(entry.date) <= cutoff &&
+      entry.category === TUITION_CATEGORY &&
+      ((!entry.isLateCollection && entry.academicYearId === yearId) ||
+        (entry.isLateCollection && entry.originalYearId === yearId)),
+    )
+    .reduce((sum, entry) => sum + entry.amount, 0);
+}
+
 export function getFeeOutstanding(
   year: AcademicYear,
   entries: IncomeEntry[],
   excludeEntryId?: string,
 ): { totalOwed: number; collected: number; remaining: number; targetGap: number; carryForward: number } {
   const collected = getFeeCollected(entries, year.id, excludeEntryId);
+  const carryForward = year.carryForwardFees || 0;
+  const totalOwed = year.targetTuitionFees + carryForward;
+  return {
+    totalOwed,
+    collected,
+    remaining: Math.max(0, totalOwed - collected),
+    targetGap: Math.max(0, year.targetTuitionFees - collected),
+    carryForward,
+  };
+}
+
+export function getFeeOutstandingAsOf(
+  year: AcademicYear,
+  entries: IncomeEntry[],
+  cutoffDate: Date | string,
+  excludeEntryId?: string,
+): { totalOwed: number; collected: number; remaining: number; targetGap: number; carryForward: number } {
+  const collected = getFeeCollectedAsOf(entries, year.id, cutoffDate, excludeEntryId);
   const carryForward = year.carryForwardFees || 0;
   const totalOwed = year.targetTuitionFees + carryForward;
   return {
@@ -194,7 +235,7 @@ export function isPreviousAcademicYear(original: AcademicYear, booking: Academic
 
 export const INCOME_SOURCE_LABELS: Record<IncomeSource, string> = {
   current_tuition: 'Current-Year Tuition Fees',
-  old_fees: 'Previous-Year / Old Fee Collections',
+  old_fees: 'Previous-Year Fees Received',
   lunch: 'Lunch Fees',
   other: 'Investment / Extra Income',
 };

@@ -133,7 +133,7 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
   return (
     <>
       <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{isEdit ? 'Edit Transfer' : 'Transfer Money'}</DialogTitle>
           </DialogHeader>

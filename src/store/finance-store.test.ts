@@ -13,7 +13,8 @@ const accounts: Account[] = [
 
 const income = (id: string, amount: number, late = false): IncomeEntry => ({
   id, academicYearId: 'year', category: 'Tuition Fees', amount, date: new Date(2026, 0, 10),
-  accountId: 'active', isLateCollection: late, originalYearId: late ? 'previous' : null, notes: '', tags: [],
+  accountId: 'active', isLateCollection: late, originalYearId: late ? 'previous' : null,
+  studentEnrollmentId: null, paymentMethod: null, paymentReference: '', notes: '', tags: [],
 });
 const expense = (id: string, amount: number, expenseType: 'school' | 'home', category: string): ExpenseEntry => ({
   id, academicYearId: 'year', expenseType, category, subCategory: '', amount, date: new Date(2026, 0, 11),

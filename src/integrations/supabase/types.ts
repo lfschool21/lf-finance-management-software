@@ -220,6 +220,9 @@ export type Database = {
           is_late_collection: boolean
           notes: string | null
           original_year_id: string | null
+          payment_method: string | null
+          payment_reference: string | null
+          student_enrollment_id: string | null
           tags: string[] | null
           type: string
           updated_at: string | null
@@ -235,6 +238,9 @@ export type Database = {
           is_late_collection?: boolean
           notes?: string | null
           original_year_id?: string | null
+          payment_method?: string | null
+          payment_reference?: string | null
+          student_enrollment_id?: string | null
           tags?: string[] | null
           type: string
           updated_at?: string | null
@@ -250,6 +256,9 @@ export type Database = {
           is_late_collection?: boolean
           notes?: string | null
           original_year_id?: string | null
+          payment_method?: string | null
+          payment_reference?: string | null
+          student_enrollment_id?: string | null
           tags?: string[] | null
           type?: string
           updated_at?: string | null
@@ -275,6 +284,13 @@ export type Database = {
             columns: ["original_year_id"]
             isOneToOne: false
             referencedRelation: "academic_years"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_entries_student_enrollment_id_fkey"
+            columns: ["student_enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "student_enrollments"
             referencedColumns: ["id"]
           },
         ]
@@ -413,6 +429,96 @@ export type Database = {
         }
         Relationships: []
       }
+      student_enrollments: {
+        Row: {
+          academic_year_id: string
+          additional_outstanding_amount: number
+          annual_fee_amount: number
+          class_name: string
+          created_at: string
+          id: string
+          medium: string
+          notes: string | null
+          opening_collected_cash: number
+          opening_collected_other: number
+          opening_collected_upi: number
+          opening_snapshot_date: string | null
+          status: string
+          student_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          academic_year_id: string
+          additional_outstanding_amount?: number
+          annual_fee_amount?: number
+          class_name: string
+          created_at?: string
+          id?: string
+          medium: string
+          notes?: string | null
+          opening_collected_cash?: number
+          opening_collected_other?: number
+          opening_collected_upi?: number
+          opening_snapshot_date?: string | null
+          status?: string
+          student_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          academic_year_id?: string
+          additional_outstanding_amount?: number
+          annual_fee_amount?: number
+          class_name?: string
+          created_at?: string
+          id?: string
+          medium?: string
+          notes?: string | null
+          opening_collected_cash?: number
+          opening_collected_other?: number
+          opening_collected_upi?: number
+          opening_snapshot_date?: string | null
+          status?: string
+          student_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      students: {
+        Row: {
+          admission_number: string | null
+          created_at: string
+          full_name: string
+          id: string
+          notes: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admission_number?: string | null
+          created_at?: string
+          full_name: string
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admission_number?: string | null
+          created_at?: string
+          full_name?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       transfers: {
         Row: {
           amount: number
@@ -472,9 +578,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      archive_student: { Args: { p_student_id: string }; Returns: undefined }
       complete_initial_setup: {
         Args: { p_accounts: Json; p_templates?: Json; p_year: Json }
         Returns: undefined
+      }
+      import_student_roster: {
+        Args: { p_academic_year_id: string; p_rows: Json }
+        Returns: Json
       }
       record_recurring_expense: {
         Args: {
@@ -488,6 +599,10 @@ export type Database = {
         Returns: undefined
       }
       restore_finance_backup: { Args: { p_backup: Json }; Returns: undefined }
+      save_student_with_enrollment: {
+        Args: { p_enrollment: Json; p_student: Json }
+        Returns: Json
+      }
       save_transfer: {
         Args: {
           p_amount: number

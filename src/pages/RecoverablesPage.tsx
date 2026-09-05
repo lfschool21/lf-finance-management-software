@@ -38,10 +38,10 @@ export default function RecoverablesPage() {
         <div><h1 className="text-2xl font-bold">Recoverables / Advances</h1><p className="text-sm text-muted-foreground">Money given that must be recovered; not an expense.</p></div>
         <Button className="gap-1.5" onClick={() => setEditAdvance(null)}><Plus className="h-4 w-4" /> Give Advance</Button>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <StatCard title="Total Given" value={formatINRAbbr(totals.given)} fullValue={formatINR(totals.given)} icon={HandCoins} variant="balance" />
-        <StatCard title="Total Recovered" value={formatINRAbbr(totals.recovered)} fullValue={formatINR(totals.recovered)} icon={RotateCcw} variant="income" />
-        <StatCard title="Total Outstanding" value={formatINRAbbr(totals.outstanding)} fullValue={formatINR(totals.outstanding)} icon={HandCoins} variant="pending" />
+      <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:grid-cols-3">
+        <StatCard title="Still Outstanding" value={formatINRAbbr(totals.outstanding)} fullValue={formatINR(totals.outstanding)} icon={HandCoins} variant="pending" />
+        <StatCard title="Money Given" value={formatINRAbbr(totals.given)} fullValue={formatINR(totals.given)} icon={HandCoins} variant="balance" />
+        <StatCard title="Recoverable Repayments Received" value={formatINRAbbr(totals.recovered)} fullValue={formatINR(totals.recovered)} icon={RotateCcw} variant="balance" />
       </div>
       {rows.length === 0 ? <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">No recoverable advances recorded.</div> : (
         <div className="divide-y rounded-lg border bg-card">
@@ -55,7 +55,7 @@ export default function RecoverablesPage() {
                 </button>
                 <div className="text-left sm:text-right"><p className="font-mono font-bold text-warning">{formatINR(row.outstanding)} remaining</p><p className="text-xs capitalize text-muted-foreground">{row.status.replace('_', ' ')}</p></div>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+              <div className="mt-3 grid grid-cols-1 gap-2 text-xs min-[360px]:grid-cols-2 sm:grid-cols-3">
                 <Metric label="Given" value={row.recoverable.originalAmount} />
                 <Metric label="Recovered" value={row.recovered} />
                 <Metric label="Remaining" value={row.outstanding} />
@@ -68,7 +68,7 @@ export default function RecoverablesPage() {
                 <div className="mt-3 divide-y rounded-md border">
                   {recoverableRepayments.filter((p) => p.recoverableId === row.recoverable.id).sort((a, b) => b.date.getTime() - a.date.getTime()).map((p) => (
                     <button key={p.id} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs" onClick={() => { setRepaymentTarget(row.recoverable); setEditRepayment(p); }}>
-                      <span>{p.date.toLocaleDateString('en-IN')} • {accountName(p.accountId)}</span><span className="font-mono font-semibold text-income">+{formatINR(p.amount)}</span>
+                      <span>{p.date.toLocaleDateString('en-IN')} • {accountName(p.accountId)} • liquidity restored</span><span className="font-mono font-semibold text-primary">{formatINR(p.amount)} returned</span>
                     </button>
                   ))}
                 </div>
@@ -117,7 +117,7 @@ function AdvanceModal({ open, entry, onClose }: { open: boolean; entry?: Recover
     finally { setSaving(false); setConfirmDelete(false); }
   }
   return <>
-    <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>{entry ? 'Edit Recoverable Advance' : 'Give Recoverable Advance'}</DialogTitle></DialogHeader><div className="space-y-3">
+    <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md"><DialogHeader><DialogTitle>{entry ? 'Edit Recoverable Advance' : 'Give Recoverable Advance'}</DialogTitle></DialogHeader><div className="space-y-3">
       <div><Label>Person / Party</Label><Input value={party} onChange={(e) => setParty(e.target.value)} /></div>
       <div><Label>Amount Given (₹)</Label><Input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
       <div><Label>Date Given</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
@@ -151,7 +151,7 @@ function RepaymentModal({ open, recoverable, entry, onClose }: { open: boolean; 
     finally { setSaving(false); }
   }
   async function remove() { if (!entry) return; setSaving(true); try { await deleteRecoverableRepayment(entry.id); toast({ title: 'Repayment deleted' }); onClose(); } catch (err) { toast({ title: 'Delete failed', description: err instanceof Error ? err.message : 'Database error', variant: 'destructive' }); } finally { setSaving(false); } }
-  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>{entry ? 'Edit Repayment' : 'Record Repayment'} — {recoverable.partyName}</DialogTitle></DialogHeader><div className="space-y-3">
+  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md"><DialogHeader><DialogTitle>{entry ? 'Edit Repayment' : 'Record Repayment'} — {recoverable.partyName}</DialogTitle></DialogHeader><div className="space-y-3">
     <p className="text-sm text-muted-foreground">Available outstanding: {formatINR(available)}</p>
     <div><Label>Amount Received (₹)</Label><Input type="number" min="0.01" step="0.01" max={available} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
     <div><Label>Date Received</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>

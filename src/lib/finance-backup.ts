@@ -26,6 +26,9 @@ const dataSchema = z.object({
     ...base, academic_year_id: id, account_id: id, type: z.enum(['tuition', 'lunch', 'other']),
     amount: positiveMoney, date, is_late_collection: z.boolean().nullable().optional(),
     original_year_id: id.nullable().optional(), notes: z.string().nullable().optional(),
+    student_enrollment_id: id.nullable().optional(),
+    payment_method: z.enum(['cash', 'upi', 'bank_transfer', 'cheque', 'other']).nullable().optional(),
+    payment_reference: z.string().max(200).nullable().optional(),
     tags: z.array(z.string()).nullable().optional(),
   }).passthrough()),
   expense_entries: z.array(z.object({
@@ -68,7 +71,28 @@ const backupV2 = z.object({
   data: dataSchema.extend(recoverablesSchema),
 });
 
-export const financeBackupSchema = z.discriminatedUnion('version', [backupV1, backupV2]);
+const studentsSchema = {
+  students: z.array(z.object({
+    ...base, admission_number: z.string().max(80).nullable().optional(), full_name: z.string().min(1).max(200),
+    status: z.enum(['active', 'inactive', 'left']), notes: z.string().max(4000).nullable().optional(),
+  }).passthrough()),
+  student_enrollments: z.array(z.object({
+    ...base, student_id: id, academic_year_id: id, class_name: z.string().min(1).max(100),
+    medium: z.enum(['english', 'gujarati']), annual_fee_amount: money,
+    additional_outstanding_amount: money, opening_collected_cash: money,
+    opening_collected_upi: money, opening_collected_other: money,
+    opening_snapshot_date: date.nullable().optional(), status: z.enum(['active', 'inactive', 'left']),
+    notes: z.string().max(4000).nullable().optional(),
+  }).passthrough()),
+};
+
+const backupV3 = z.object({
+  version: z.literal('3.0'),
+  date: z.string().datetime({ offset: true }),
+  data: dataSchema.extend(recoverablesSchema).extend(studentsSchema),
+});
+
+export const financeBackupSchema = z.discriminatedUnion('version', [backupV1, backupV2, backupV3]);
 export type FinanceBackup = z.infer<typeof financeBackupSchema>;
 
 export function parseFinanceBackup(input: unknown): FinanceBackup {

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { AddIncomeModal } from '@/components/AddIncomeModal';
 import { toast } from '@/hooks/use-toast';
@@ -14,6 +15,8 @@ import * as academicYearsService from '@/services/academicYears';
 import type { IncomeEntry } from '@/types/finance';
 import { TUITION_CATEGORY, LUNCH_CATEGORY, OTHER_CATEGORY } from '@/types/finance';
 import { getIncomeBreakdown, isPreviousAcademicYear, parseNonNegativeAmount } from '@/lib/finance-domain';
+import { useStudentStore } from '@/store/student-store';
+import { MEDIUM_LABELS } from '@/types/students';
 
 export default function IncomePage() {
   const { incomeEntries, academicYears, currentYearId, refreshAcademicYears, getPendingForYear } = useFinanceStore();
@@ -45,7 +48,7 @@ export default function IncomePage() {
     // Build per-category breakdown for the summary tab
     const categoryBreakdown = [
       { cat: 'Current-Year Tuition Fees', amount: incomeBreakdown.currentTuition },
-      { cat: 'Previous-Year / Old Fee Collections', amount: incomeBreakdown.oldFees },
+      { cat: 'Previous-Year Fees Received', amount: incomeBreakdown.oldFees },
       { cat: 'Lunch Fees', amount: incomeBreakdown.lunch },
       { cat: 'Investment / Extra Income', amount: incomeBreakdown.other },
     ].filter((item) => item.amount > 0);
@@ -67,10 +70,13 @@ export default function IncomePage() {
           totalTarget: info.totalOwed,
           totalRemaining: info.remaining,
           yearsOverdue,
+          receivedThisAcademicYear: incomeEntries
+            .filter((entry) => entry.academicYearId === currentYearId && entry.isLateCollection && entry.originalYearId === y.id)
+            .reduce((sum, entry) => sum + entry.amount, 0),
         };
       })
       .filter((y) => y.totalRemaining > 0 && (!currentYear || isPreviousAcademicYear(y, currentYear)));
-  }, [academicYears, currentYear, getPendingForYear]);
+  }, [academicYears, currentYear, currentYearId, getPendingForYear, incomeEntries]);
 
   // Fixed tabs — no dynamic category discovery needed
   const filteredEntries = useMemo(() => {
@@ -133,7 +139,7 @@ export default function IncomePage() {
   async function saveCarry() {
     if (!carryYearId) return;
     const carry = parseNonNegativeAmount(carryValue || '0');
-    if (carry === null) { toast({ title: 'Enter a non-negative carry-forward amount', variant: 'destructive' }); return; }
+    if (carry === null) { toast({ title: 'Enter a non-negative outstanding balance', variant: 'destructive' }); return; }
     setCarrySaving(true);
     try {
       const { error } = await academicYearsService.update(carryYearId, {
@@ -141,15 +147,18 @@ export default function IncomePage() {
       });
       if (error) throw error;
       await refreshAcademicYears();
-      toast({ title: '✅ Carry-forward fees updated' });
+      toast({ title: '✅ Additional outstanding fee balance updated' });
       setShowCarryModal(false);
     } catch {
-      toast({ title: 'Failed to update carry-forward fees', variant: 'destructive' });
+      toast({ title: 'Failed to update the additional outstanding fee balance', variant: 'destructive' });
     }
     setCarrySaving(false);
   }
 
   const feeProgress = stats.target > 0 ? Math.round((stats.tuitionTotal / stats.target) * 100) : 0;
+  const previousPendingTotal = pendingYears.reduce((sum, year) => sum + year.totalRemaining, 0);
+  const feeCashCollected = stats.tuitionTotal + stats.incomeBreakdown.oldFees;
+  const totalFeesStillToCollect = Math.max(0, stats.target - stats.tuitionTotal) + previousPendingTotal;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -164,12 +173,21 @@ export default function IncomePage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard title="Tuition Collected" value={formatINRAbbr(stats.tuitionTotal)} fullValue={formatINR(stats.tuitionTotal)} icon={IndianRupee} variant="income" />
-        <StatCard title="Total Income" value={formatINRAbbr(stats.totalIncome)} fullValue={formatINR(stats.totalIncome)} icon={TrendingUp} variant="income" />
-        <StatCard title="Fee Target" value={formatINRAbbr(stats.target)} fullValue={formatINR(stats.target)} icon={TrendingUp} variant="balance" />
-        <StatCard title="Remaining" value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionTotal))} fullValue={formatINR(Math.max(0, stats.target - stats.tuitionTotal))} icon={Clock} variant="pending" />
-      </div>
+      <section className="space-y-3 rounded-xl border bg-card p-4" aria-labelledby="income-fees-title">
+        <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Fee collections</p><h2 id="income-fees-title" className="text-lg font-bold">Current and Previous-Year Fees</h2></div>
+        <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 lg:grid-cols-3">
+          <StatCard title="Current-Year Tuition Target" value={formatINRAbbr(stats.target)} fullValue={formatINR(stats.target)} icon={TrendingUp} variant="balance" />
+          <StatCard title="Current-Year Tuition Collected" value={formatINRAbbr(stats.tuitionTotal)} fullValue={formatINR(stats.tuitionTotal)} icon={IndianRupee} variant="income" />
+          <StatCard title="Current-Year Tuition Remaining" value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionTotal))} fullValue={formatINR(Math.max(0, stats.target - stats.tuitionTotal))} icon={Clock} variant="pending" />
+          <StatCard title="Previous-Year Fees Received This AY" value={formatINRAbbr(stats.incomeBreakdown.oldFees)} fullValue={formatINR(stats.incomeBreakdown.oldFees)} icon={IndianRupee} variant="income" />
+          <StatCard title="Previous-Year Fees Still Pending" value={formatINRAbbr(previousPendingTotal)} fullValue={formatINR(previousPendingTotal)} icon={Clock} variant="pending" />
+          <StatCard title="Total Cash Income" value={formatINRAbbr(stats.totalIncome)} fullValue={formatINR(stats.totalIncome)} icon={TrendingUp} variant="income" />
+        </div>
+        <div className="grid gap-3 border-t pt-3 min-[420px]:grid-cols-2">
+          <SummaryMetric label="Fee Cash Collected This AY" value={feeCashCollected} tone="income" />
+          <SummaryMetric label="Total Fees Still To Collect" value={totalFeesStillToCollect} tone="warning" />
+        </div>
+      </section>
 
       {/* Tuition fee progress bar */}
       <div className="rounded-lg border bg-card p-4">
@@ -201,11 +219,11 @@ export default function IncomePage() {
           <TabsList className="w-max min-w-full sm:w-auto">
             <TabsTrigger value="all">All Income</TabsTrigger>
             <TabsTrigger value="tuition">Current Tuition</TabsTrigger>
-            <TabsTrigger value="old">Old Fees</TabsTrigger>
+            <TabsTrigger value="old">Previous-Year Fees Received</TabsTrigger>
             <TabsTrigger value="lunch">Lunch Fees</TabsTrigger>
             <TabsTrigger value="other">Investment / Extra</TabsTrigger>
             <TabsTrigger value="pending">
-              Pending Collections
+              Previous-Year Fees Pending
               {pendingYears.length > 0 && (
                 <span className="ml-1.5 rounded-full bg-warning px-1.5 py-0.5 text-[10px] font-bold text-warning-foreground">
                   {pendingYears.length}
@@ -262,7 +280,7 @@ export default function IncomePage() {
         {/* Pending collections tab */}
         <TabsContent value="pending" className="mt-4 space-y-3">
           {pendingYears.length === 0 ? (
-            <EmptyState message="No pending collections! All fees are up to date." />
+            <EmptyState message="No previous-year fee balance remains. All previous-year fees are currently collected." />
           ) : (
             pendingYears.map((y) => {
               const collectProgress = y.totalTarget > 0
@@ -287,7 +305,7 @@ export default function IncomePage() {
                         )}
                       </div>
                       <p className="text-fit text-sm text-muted-foreground">
-                        Collected: {formatINR(y.collected)} / {formatINR(y.totalTarget)}
+                        Collected against AY {y.label}: {formatINR(y.collected)} / {formatINR(y.totalTarget)}
                       </p>
                     </div>
                     <div className="min-w-0 text-left sm:text-right">
@@ -295,6 +313,12 @@ export default function IncomePage() {
                       <p className="text-xs text-muted-foreground">still pending</p>
                     </div>
                   </div>
+
+                  {y.receivedThisAcademicYear > 0 && (
+                    <p className="mt-2 text-xs font-medium text-income">
+                      Received in AY {currentYear?.label}: {formatINR(y.receivedThisAcademicYear)}
+                    </p>
+                  )}
 
                   <div className="mt-3">
                     <div className="h-2 rounded-full bg-muted">
@@ -311,7 +335,7 @@ export default function IncomePage() {
                       </div>
                       <div className="flex flex-col gap-1 text-warning min-[420px]:flex-row min-[420px]:justify-between">
                         <span className="flex items-center gap-1">
-                          <History className="h-3 w-3" /> Carry-forward from previous year
+                          <History className="h-3 w-3" /> Additional outstanding fee balance
                         </span>
                         <span className="money-fit font-mono">{formatINR(y.carryForward)}</span>
                       </div>
@@ -320,7 +344,7 @@ export default function IncomePage() {
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" onClick={() => openLatePayment(y.id)}>
-                      Record Late Payment
+                      Record Previous-Year Payment
                     </Button>
                     <Button
                       size="sm"
@@ -329,7 +353,7 @@ export default function IncomePage() {
                       onClick={() => openEditCarry(y.id, y.carryForward)}
                     >
                       <History className="h-3.5 w-3.5" />
-                      {y.carryForward > 0 ? 'Edit Carry-Forward' : 'Add Carry-Forward'}
+                      {y.carryForward > 0 ? 'Edit Additional Balance' : 'Add Additional Balance'}
                     </Button>
                   </div>
                 </div>
@@ -340,7 +364,7 @@ export default function IncomePage() {
           {academicYears.filter((y) => !pendingYears.find((p) => p.id === y.id)).length > 0 && (
             <div className="rounded-lg border border-dashed bg-card/50 p-3">
               <p className="mb-2 text-xs text-muted-foreground">
-                Add carry-forward fees for years that appear fully collected but have last-year balances still outstanding:
+                Add an outstanding balance only when unpaid fees for an academic year are not already included in its tuition target:
               </p>
               <div className="flex flex-wrap gap-2">
                 {academicYears
@@ -371,7 +395,9 @@ export default function IncomePage() {
             <DialogTitle>Edit Tuition Fee Target</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">AY {currentYear?.label}</p>
+          <Label htmlFor="current-year-target">Current-Year Tuition Target (₹)</Label>
           <Input
+            id="current-year-target"
             type="number"
             placeholder="Target tuition fees (₹)"
             value={targetValue}
@@ -389,20 +415,21 @@ export default function IncomePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Carry-Forward Fees Modal */}
+      {/* Edit additional outstanding fee balance modal */}
       <Dialog open={showCarryModal} onOpenChange={setShowCarryModal}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Last Year's Remaining Fees</DialogTitle>
+            <DialogTitle>Additional Outstanding Fee Balance</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Enter the amount still owed from last year that was not collected — this will appear as an
-            additional pending amount for AY {academicYears.find((y) => y.id === carryYearId)?.label}.
-            Set to 0 to clear it.
+            Enter unpaid fees belonging to AY {academicYears.find((y) => y.id === carryYearId)?.label} that are not already included in its tuition target.
+            Do not enter the same balance under another academic year. Set to 0 to clear it.
           </p>
+          <Label htmlFor="additional-outstanding-balance">Additional Outstanding Fee Balance (₹)</Label>
           <Input
+            id="additional-outstanding-balance"
             type="number"
-            placeholder="Carry-forward amount (₹)"
+            placeholder="Enter additional balance"
             value={carryValue}
             onChange={(e) => setCarryValue(e.target.value)}
           />
@@ -430,33 +457,51 @@ function TransactionList({
   onEdit: (entry: IncomeEntry) => void;
   showCategory?: boolean;
 }) {
+  const { students, enrollments } = useStudentStore();
+  const { accounts, academicYears } = useFinanceStore();
   if (entries.length === 0) return <EmptyState message="No entries yet. Add your first one!" />;
 
   const sorted = [...entries].sort((a, b) => b.date.getTime() - a.date.getTime());
   return (
     <div className="divide-y rounded-lg border bg-card">
-      {sorted.map((entry) => (
-        <div
+      {sorted.map((entry) => {
+        const enrollment = enrollments.find((item) => item.id === entry.studentEnrollmentId);
+        const student = students.find((item) => item.id === enrollment?.studentId);
+        const account = accounts.find((item) => item.id === entry.accountId);
+        const originalYear = academicYears.find((item) => item.id === entry.originalYearId);
+        return (
+        <button
+          type="button"
           key={entry.id}
-          className="flex min-w-0 cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+          className="flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           onClick={() => onEdit(entry)}
         >
           <div className="min-w-0 flex-1">
             {showCategory && (
               <p className="text-[11px] font-medium text-muted-foreground">{entry.category}</p>
             )}
-            <p className="text-fit text-sm font-medium">{entry.notes || 'No description'}</p>
+            <p className="text-fit text-sm font-medium">{student?.fullName || entry.notes || (entry.category === TUITION_CATEGORY ? 'Unassigned tuition payment' : 'No description')}</p>
             <p className="text-xs text-muted-foreground">
               {entry.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {enrollment ? ` · ${enrollment.className} · ${MEDIUM_LABELS[enrollment.medium]}` : ''}
+              {entry.isLateCollection ? ` · For AY ${originalYear?.label || '—'}` : ''}
             </p>
+            {entry.category === TUITION_CATEGORY && <p className="text-xs text-muted-foreground">
+              {entry.paymentMethod?.replace('_', ' ') || 'Unknown / Not Recorded'} · {account?.name || 'Unknown account'}
+            </p>
+            }
           </div>
           <span className="money-fit max-w-[45%] text-right font-mono text-sm font-semibold text-income">
             +{formatINR(entry.amount)}
           </span>
-        </div>
-      ))}
+        </button>
+      );})}
     </div>
   );
+}
+
+function SummaryMetric({ label, value, tone }: { label: string; value: number; tone: 'income' | 'warning' }) {
+  return <div className="rounded-lg bg-muted/40 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className={cn('money-fit mt-1 font-mono text-lg font-bold', tone === 'income' ? 'text-income' : 'text-warning')}>{formatINR(value)}</p></div>;
 }
 
 function EmptyState({ message }: { message: string }) {

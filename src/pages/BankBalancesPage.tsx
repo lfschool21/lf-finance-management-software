@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import {
   ArrowDownLeft,
   ArrowLeftRight,
-  ArrowRight,
   ArrowUpRight,
   Banknote,
   Landmark,
@@ -74,7 +73,7 @@ export default function BankBalancesPage() {
     const income = incomeEntries.map((entry) => ({
       id: `income-${entry.id}`,
       date: entry.date,
-      title: entry.isLateCollection ? `Late Collection (${entry.category})` : entry.category,
+      title: entry.isLateCollection ? 'Previous-Year Fee Payment' : entry.category,
       detail: getAccountName(entry.accountId),
       amount: entry.amount,
       direction: 'in' as const,
@@ -89,41 +88,31 @@ export default function BankBalancesPage() {
       direction: 'out' as const,
     }));
 
-    const transferRows = transfers.flatMap((transfer) => [
-      {
-        id: `transfer-out-${transfer.id}`,
-        date: transfer.date,
-        title: 'Transfer Out',
-        detail: `${getAccountName(transfer.fromAccountId)} to ${getAccountName(transfer.toAccountId)}`,
-        amount: transfer.amount,
-        direction: 'transfer-out' as const,
-      },
-      {
-        id: `transfer-in-${transfer.id}`,
-        date: transfer.date,
-        title: 'Transfer In',
-        detail: `${getAccountName(transfer.fromAccountId)} to ${getAccountName(transfer.toAccountId)}`,
-        amount: transfer.amount,
-        direction: 'transfer-in' as const,
-      },
-    ]);
+    const transferRows = transfers.map((transfer) => ({
+      id: `transfer-${transfer.id}`,
+      date: transfer.date,
+      title: 'Transfer',
+      detail: `${getAccountName(transfer.fromAccountId)} → ${getAccountName(transfer.toAccountId)} · No change to total liquidity`,
+      amount: transfer.amount,
+      direction: 'transfer' as const,
+    }));
 
     const advanceRows = recoverables.map((entry) => ({
       id: `advance-${entry.id}`,
       date: entry.dateGiven,
-      title: `Advance — ${entry.partyName}`,
-      detail: getAccountName(entry.sourceAccountId),
+      title: `Recoverable Advance — ${entry.partyName}`,
+      detail: `${getAccountName(entry.sourceAccountId)} · not an expense`,
       amount: entry.originalAmount,
-      direction: 'out' as const,
+      direction: 'recoverable-out' as const,
     }));
 
     const repaymentRows = recoverableRepayments.map((entry) => ({
       id: `recovery-${entry.id}`,
       date: entry.date,
       title: 'Recoverable Repayment',
-      detail: getAccountName(entry.accountId),
+      detail: `${getAccountName(entry.accountId)} · liquidity restored, not income`,
       amount: entry.amount,
-      direction: 'in' as const,
+      direction: 'recoverable-in' as const,
     }));
 
     return [...income, ...expenses, ...transferRows, ...advanceRows, ...repaymentRows]
@@ -134,7 +123,7 @@ export default function BankBalancesPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="min-w-0">
-        <h1 className="text-2xl font-bold">Bank Balances</h1>
+        <h1 className="text-2xl font-bold">Balances</h1>
         <p className="text-fit text-sm text-muted-foreground">
           Current balances across all accounts; archived historical accounts remain included.
         </p>
@@ -142,7 +131,7 @@ export default function BankBalancesPage() {
 
       <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="All Accounts"
+          title="Total Liquid Balance"
           value={formatINRAbbr(totals.totalBalance)}
           fullValue={formatINR(totals.totalBalance)}
           icon={Landmark}
@@ -173,7 +162,7 @@ export default function BankBalancesPage() {
 
       <div className="rounded-lg border bg-card">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <h3 className="text-sm font-semibold">Account Balance Check</h3>
+          <h3 className="text-sm font-semibold">Account Reconciliation</h3>
           <span className="text-xs text-muted-foreground">{accountRows.length} tracked accounts</span>
         </div>
 
@@ -215,14 +204,17 @@ export default function BankBalancesPage() {
                     </div>
                   </div>
 
-                  <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">
-                    <MiniMetric label="Income" value={account.income} tone="income" />
-                    <MiniMetric label="Expenses" value={account.expenses} tone="expense" />
-                    <MiniMetric label="Transfers In" value={account.transfersIn} tone="income" />
-                    <MiniMetric label="Transfers Out" value={account.transfersOut} tone="expense" />
-                    <MiniMetric label="Advances Given" value={account.advancesGiven} tone="expense" />
-                    <MiniMetric label="Recoveries" value={account.recoveriesReceived} tone="income" />
-                  </div>
+                  <details className="group mt-3 rounded-lg border bg-muted/20">
+                    <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Show reconciliation details</summary>
+                    <div className="grid gap-2 border-t p-3 text-xs sm:grid-cols-3 lg:grid-cols-6">
+                      <MiniMetric label="Income" value={account.income} tone="income" />
+                      <MiniMetric label="Expenses" value={account.expenses} tone="expense" />
+                      <MiniMetric label="Transfers In" value={account.transfersIn} tone="neutral" />
+                      <MiniMetric label="Transfers Out" value={account.transfersOut} tone="neutral" />
+                      <MiniMetric label="Recoverable Advances" value={account.advancesGiven} tone="neutral" />
+                      <MiniMetric label="Recoverable Repayments" value={account.recoveriesReceived} tone="neutral" />
+                    </div>
+                  </details>
                 </div>
               );
             })}
@@ -243,22 +235,23 @@ export default function BankBalancesPage() {
         ) : (
           <div className="divide-y">
             {recentMovements.map((movement) => {
-              const isPositive = movement.direction === 'in' || movement.direction === 'transfer-in';
+              const isPositive = movement.direction === 'in';
+              const isTransfer = movement.direction === 'transfer';
+              const isRecoverable = movement.direction.startsWith('recoverable');
               const Icon = movement.direction === 'in'
                 ? ArrowDownLeft
-                : movement.direction === 'out'
+                : movement.direction === 'out' || movement.direction === 'recoverable-out'
                   ? ArrowUpRight
                   : ArrowLeftRight;
 
               return (
                 <div key={movement.id} className="flex items-center gap-3 px-4 py-3">
-                  <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg', isPositive ? 'bg-income/10' : 'bg-expense/10')}>
-                    <Icon className={cn('h-4 w-4', isPositive ? 'text-income' : 'text-expense')} />
+                  <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg', isTransfer || isRecoverable ? 'bg-primary/10' : isPositive ? 'bg-income/10' : 'bg-expense/10')}>
+                    <Icon className={cn('h-4 w-4', isTransfer || isRecoverable ? 'text-primary' : isPositive ? 'text-income' : 'text-expense')} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 text-sm font-medium">
                       <span className="text-fit">{movement.title}</span>
-                      {movement.direction.startsWith('transfer') && <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />}
                     </div>
                     <p className="text-fit text-xs text-muted-foreground">
                       {movement.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -266,8 +259,8 @@ export default function BankBalancesPage() {
                       {movement.detail}
                     </p>
                   </div>
-                  <span className={cn('money-fit max-w-[42%] text-right font-mono text-sm font-semibold', isPositive ? 'text-income' : 'text-expense')}>
-                    {isPositive ? '+' : '-'}{formatINR(movement.amount)}
+                  <span className={cn('money-fit max-w-[42%] text-right font-mono text-sm font-semibold', isTransfer || isRecoverable ? 'text-primary' : isPositive ? 'text-income' : 'text-expense')}>
+                    {isTransfer ? '' : movement.direction === 'in' || movement.direction === 'recoverable-in' ? '+' : '-'}{formatINR(movement.amount)}
                   </span>
                 </div>
               );
@@ -290,11 +283,11 @@ function BalancePart({ label, value }: { label: string; value: number }) {
   );
 }
 
-function MiniMetric({ label, value, tone }: { label: string; value: number; tone: 'income' | 'expense' }) {
+function MiniMetric({ label, value, tone }: { label: string; value: number; tone: 'income' | 'expense' | 'neutral' }) {
   return (
-    <div className={cn('rounded-lg border p-3', tone === 'income' ? 'bg-income/5 border-income/15' : 'bg-expense/5 border-expense/15')}>
+    <div className={cn('rounded-lg border p-3', tone === 'income' ? 'bg-income/5 border-income/15' : tone === 'expense' ? 'bg-expense/5 border-expense/15' : 'bg-primary/5 border-primary/15')}>
       <p className="text-muted-foreground">{label}</p>
-      <p className={cn('money-fit mt-0.5 font-mono text-sm font-semibold', tone === 'income' ? 'text-income' : 'text-expense')}>
+      <p className={cn('money-fit mt-0.5 font-mono text-sm font-semibold', tone === 'income' ? 'text-income' : tone === 'expense' ? 'text-expense' : 'text-primary')}>
         {formatINR(value)}
       </p>
     </div>

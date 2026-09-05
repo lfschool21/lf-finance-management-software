@@ -21,6 +21,7 @@ import { useNavigate } from 'react-router-dom';
 import { useFinanceStore } from '@/store/finance-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -42,7 +43,7 @@ export default function SettingsPage() {
   const {
     isDarkMode, toggleDarkMode, accounts, academicYears, recurringTemplates,
     refreshAccounts, refreshAcademicYears, refreshRecurringTemplates, init,
-    getAccountBalance,
+    getAccountBalance, getPendingForYear,
   } = useFinanceStore();
 
   // Password change
@@ -244,14 +245,14 @@ export default function SettingsPage() {
   async function handleCreateBackup() {
     setBackupLoading(true);
     try {
-      const tables = ['academic_years', 'accounts', 'income_entries', 'expense_entries', 'transfers', 'recurring_templates', 'recoverables', 'recoverable_repayments'] as const;
+      const tables = ['academic_years', 'accounts', 'income_entries', 'expense_entries', 'transfers', 'recurring_templates', 'recoverables', 'recoverable_repayments', 'students', 'student_enrollments'] as const;
       const backup: Record<string, unknown[]> = {};
       for (const table of tables) {
         const { data, error } = await supabase.from(table).select('*');
         if (error) throw error;
         backup[table] = data || [];
       }
-      const json = JSON.stringify({ version: '2.0', date: new Date().toISOString(), data: backup }, null, 2);
+      const json = JSON.stringify({ version: '3.0', date: new Date().toISOString(), data: backup }, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -396,7 +397,9 @@ export default function SettingsPage() {
               <div key={y.id} className="flex flex-col gap-2 rounded-md bg-secondary/50 px-3 py-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">AY {y.label}</p>
-                  <p className="text-fit text-xs text-muted-foreground">Target: {formatINR(y.targetTuitionFees)} • {y.status.replace('_', ' ')}</p>
+                  <p className="text-fit text-xs text-muted-foreground">Tuition target: {formatINR(y.targetTuitionFees)} • {y.status.replace('_', ' ')}</p>
+                  {(y.carryForwardFees || 0) > 0 && <p className="text-fit text-xs text-muted-foreground">Additional outstanding balance: {formatINR(y.carryForwardFees || 0)}</p>}
+                  {getPendingForYear(y.id).remaining > 0 && <p className="text-fit text-xs font-medium text-warning">Current outstanding: {formatINR(getPendingForYear(y.id).remaining)}</p>}
                 </div>
                 <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openYearEdit(y.id)}>Edit</Button>
               </div>
@@ -507,13 +510,14 @@ export default function SettingsPage() {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>{editYearId ? 'Edit Academic Year' : 'Add Academic Year'}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <Input placeholder="Label e.g. 2025-26" value={yearLabel} onChange={(e) => setYearLabel(e.target.value)} />
-            <Input type="date" value={yearStart} onChange={(e) => setYearStart(e.target.value)} />
-            <Input type="date" value={yearEnd} onChange={(e) => setYearEnd(e.target.value)} />
-            <Input type="number" placeholder="Target tuition fees (₹)" value={yearTarget} onChange={(e) => setYearTarget(e.target.value)} />
+            <div><Label htmlFor="year-label">Academic Year Name</Label><Input id="year-label" placeholder="e.g. 2025-26" value={yearLabel} onChange={(e) => setYearLabel(e.target.value)} /></div>
+            <div><Label htmlFor="year-start">Start Date</Label><Input id="year-start" type="date" value={yearStart} onChange={(e) => setYearStart(e.target.value)} /></div>
+            <div><Label htmlFor="year-end">End Date</Label><Input id="year-end" type="date" value={yearEnd} onChange={(e) => setYearEnd(e.target.value)} /></div>
+            <div><Label htmlFor="year-target">Current-Year Tuition Target (₹)</Label><Input id="year-target" type="number" placeholder="Enter target" value={yearTarget} onChange={(e) => setYearTarget(e.target.value)} /></div>
             <div>
-              <Input type="number" placeholder="Last year's remaining fees to collect (₹) — optional" value={yearCarry} onChange={(e) => setYearCarry(e.target.value)} />
-              <p className="mt-1 text-[11px] text-muted-foreground">Carry-forward: fees from a previous year still owed but not yet collected.</p>
+              <Label htmlFor="year-additional-balance">Additional Outstanding Fee Balance (₹)</Label>
+              <Input id="year-additional-balance" type="number" placeholder="Optional" value={yearCarry} onChange={(e) => setYearCarry(e.target.value)} />
+              <p className="mt-1 text-[11px] text-muted-foreground">Unpaid fees belonging to this academic year that are not already included in its tuition target. Do not enter the same balance under another year.</p>
             </div>
             <Button onClick={saveYear} disabled={yearSaving} className="w-full">
               {yearSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {editYearId ? 'Update' : 'Add'}

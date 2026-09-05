@@ -19,6 +19,8 @@ import RegisterPage from "@/pages/RegisterPage";
 import SetupWizard from "@/pages/SetupWizard";
 import NotFound from "@/pages/NotFound";
 import RecoverablesPage from "@/pages/RecoverablesPage";
+import StudentsPage from "@/pages/StudentsPage";
+import StudentDetailPage from "@/pages/StudentDetailPage";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +55,8 @@ const App = () => (
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/income" element={<IncomePage />} />
+                      <Route path="/students" element={<StudentsPage />} />
+                      <Route path="/students/:studentId" element={<StudentDetailPage />} />
                       <Route path="/expenses" element={<ExpensesPage />} />
                       <Route path="/transfers" element={<TransfersPage />} />
                       <Route path="/recoverables" element={<RecoverablesPage />} />

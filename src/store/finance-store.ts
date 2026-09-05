@@ -70,6 +70,9 @@ function mapIncome(row: incomeService.DbIncomeEntry): IncomeEntry {
     accountId: row.account_id,
     isLateCollection: row.is_late_collection ?? false,
     originalYearId: row.original_year_id,
+    studentEnrollmentId: row.student_enrollment_id,
+    paymentMethod: row.payment_method,
+    paymentReference: row.payment_reference || '',
     notes: row.notes || '',
     tags: row.tags || [],
   };

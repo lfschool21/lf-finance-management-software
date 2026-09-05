@@ -1,4 +1,4 @@
--- Read-only verification after the three 20260821 migrations have been applied.
+-- Read-only verification after the finance and student-fee migrations have been applied.
 -- Also rerun production_read_only_preflight.sql and compare its saved snapshot
 -- outputs with the pre-migration copies.
 
@@ -22,12 +22,17 @@ FROM (
   VALUES
     ('table:recoverables', to_regclass('public.recoverables') IS NOT NULL),
     ('table:recoverable_repayments', to_regclass('public.recoverable_repayments') IS NOT NULL),
+    ('table:students', to_regclass('public.students') IS NOT NULL),
+    ('table:student_enrollments', to_regclass('public.student_enrollments') IS NOT NULL),
     ('function:complete_initial_setup', to_regprocedure('public.complete_initial_setup(jsonb,jsonb,jsonb)') IS NOT NULL),
     ('function:wipe_finance_data', to_regprocedure('public.wipe_finance_data()') IS NOT NULL),
     ('function:restore_finance_backup', to_regprocedure('public.restore_finance_backup(jsonb)') IS NOT NULL),
     ('function:save_transfer', to_regprocedure('public.save_transfer(uuid,uuid,uuid,numeric,date,text,text)') IS NOT NULL),
     ('function:record_recurring_expense', to_regprocedure('public.record_recurring_expense(uuid,numeric,date,uuid,uuid,text)') IS NOT NULL),
     ('function:set_account_current_balance', to_regprocedure('public.set_account_current_balance(uuid,text,text,numeric)') IS NOT NULL)
+    ,('function:save_student_with_enrollment', to_regprocedure('public.save_student_with_enrollment(jsonb,jsonb)') IS NOT NULL)
+    ,('function:import_student_roster', to_regprocedure('public.import_student_roster(uuid,jsonb)') IS NOT NULL)
+    ,('function:archive_student', to_regprocedure('public.archive_student(uuid)') IS NOT NULL)
 ) AS expected_objects(object_name, exists)
 ORDER BY object_name;
 
@@ -41,6 +46,10 @@ FROM (VALUES
   ('academic_years_carry_nonnegative_check'),
   ('income_entries_type_check'),
   ('income_entries_late_state_check'),
+  ('income_entries_payment_method_check'),
+  ('income_entries_student_payment_check'),
+  ('student_enrollments_unique'),
+  ('student_enrollments_opening_check'),
   ('transfers_distinct_accounts_check'),
   ('expense_entries_recurring_template_id_fkey')
 ) AS expected(constraint_name)
@@ -58,6 +67,7 @@ FROM (VALUES
   ('validate_transfer_ownership_trigger'),
   ('validate_recoverable_integrity_trigger'),
   ('validate_recoverable_repayment_trigger')
+  ,('validate_student_enrollment_integrity_trigger')
 ) AS expected(trigger_name)
 LEFT JOIN pg_trigger t
   ON t.tgname = expected.trigger_name AND NOT t.tgisinternal
@@ -71,7 +81,7 @@ WHERE n.nspname = 'public'
   AND c.relname IN (
     'academic_years', 'accounts', 'income_entries', 'expense_entries',
     'transfers', 'recurring_templates', 'backups_log', 'recoverables',
-    'recoverable_repayments'
+    'recoverable_repayments', 'students', 'student_enrollments'
   )
 ORDER BY c.relname;
 
@@ -86,7 +96,7 @@ ORDER BY policyname;
 SELECT tablename, policyname, cmd, qual, with_check
 FROM pg_policies
 WHERE schemaname = 'public'
-  AND tablename IN ('recoverables', 'recoverable_repayments')
+  AND tablename IN ('recoverables', 'recoverable_repayments', 'students', 'student_enrollments')
 ORDER BY tablename, policyname;
 
 -- is_late_collection must be non-null after migration 00100.
@@ -94,7 +104,7 @@ SELECT table_name, column_name, is_nullable, column_default
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND (
-    (table_name = 'income_entries' AND column_name = 'is_late_collection')
+    (table_name = 'income_entries' AND column_name IN ('is_late_collection','student_enrollment_id','payment_method','payment_reference'))
     OR (table_name = 'academic_years' AND column_name = 'carry_forward_fees')
   )
 ORDER BY table_name, column_name;
@@ -106,6 +116,8 @@ FROM public.recoverables
 UNION ALL
 SELECT 'recoverable_repayments', count(*)::bigint
 FROM public.recoverable_repayments
+UNION ALL SELECT 'students', count(*)::bigint FROM public.students
+UNION ALL SELECT 'student_enrollments', count(*)::bigint FROM public.student_enrollments
 ORDER BY table_name;
 
 ROLLBACK;

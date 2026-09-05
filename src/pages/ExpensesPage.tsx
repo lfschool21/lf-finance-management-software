@@ -81,13 +81,15 @@ export default function ExpensesPage() {
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-card py-12">
               <TrendingDown className="mb-3 h-10 w-10 text-muted-foreground/30" />
               <p className="text-sm text-muted-foreground">No expenses recorded yet.</p>
+              <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={openAdd}><Plus className="h-4 w-4" />Add Expense</Button>
             </div>
           ) : (
             <div className="divide-y rounded-lg border bg-card">
               {sorted.map((entry) => (
-                <div
+                <button
+                  type="button"
                   key={entry.id}
-                  className="flex min-w-0 cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+                  className="flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   onClick={() => openEdit(entry)}
                 >
                   <div
@@ -117,7 +119,7 @@ export default function ExpensesPage() {
                   <span className="money-fit max-w-[42%] text-right font-mono text-sm font-semibold text-expense">
                     -{formatINR(entry.amount)}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           )}

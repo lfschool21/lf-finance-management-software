@@ -66,6 +66,8 @@ const financeTables = [
   'recurring_templates',
   'recoverables',
   'recoverable_repayments',
+  'students',
+  'student_enrollments',
 ];
 
 async function loadFinanceData(supabase) {
@@ -203,16 +205,103 @@ async function main() {
   ids.oldYear = oldYear.id;
   pass('setup and non-overlapping current/prior academic years');
 
+  const balancesBeforeImport = Object.fromEntries(initialAccounts.map((account) => [account.id, Number(account.starting_balance)]));
+  const importResult = expectNoError(await owner.rpc('import_student_roster', {
+    p_academic_year_id: ids.currentYear,
+    p_rows: [{
+      admission_number: 'IM-001', full_name: 'Imported Student', class_name: 'Class 7', medium: 'english',
+      annual_fee_amount: 60000, additional_outstanding_amount: 0,
+      opening_collected_cash: 7000, opening_collected_upi: 5000, opening_collected_other: 0,
+      opening_snapshot_date: '2026-06-05', previous_academic_year_id: ids.oldYear,
+      previous_class_name: 'Class 6', previous_medium: 'english', previous_annual_fee_amount: 20000,
+      previous_opening_collected_cash: 4000, previous_opening_collected_upi: 0, previous_opening_collected_other: 0,
+    }],
+  }), 'Import valid student roster row');
+  assert.deepEqual(importResult, { added: 1, failed: 0, total: 1, updated: 0 });
+
+  const duplicateResult = expectNoError(await owner.rpc('import_student_roster', {
+    p_academic_year_id: ids.currentYear,
+    p_rows: [{
+      admission_number: ' im-001 ', full_name: 'Imported Student Updated', class_name: 'Class 7A', medium: 'gujarati',
+      annual_fee_amount: 65000, additional_outstanding_amount: 1000,
+      opening_collected_cash: 7000, opening_collected_upi: 5000, opening_collected_other: 0,
+      opening_snapshot_date: '2026-06-05', previous_academic_year_id: ids.oldYear,
+      previous_class_name: 'Class 6', previous_medium: 'gujarati', previous_annual_fee_amount: 25000,
+      previous_opening_collected_cash: 4000, previous_opening_collected_upi: 0, previous_opening_collected_other: 0,
+    }],
+  }), 'Re-import duplicate admission number as update');
+  assert.deepEqual(duplicateResult, { added: 0, failed: 0, total: 1, updated: 1 });
+  const importedStudents = expectNoError(
+    await owner.from('students').select('*').ilike('admission_number', 'im-001'),
+    'Load duplicate-import result',
+  );
+  assert.equal(importedStudents.length, 1, 'Duplicate admission import created another student');
+  assert.equal(importedStudents[0].full_name, 'Imported Student Updated');
+  const importedCurrentEnrollment = expectNoError(
+    await owner.from('student_enrollments').select('*')
+      .eq('student_id', importedStudents[0].id).eq('academic_year_id', ids.currentYear).single(),
+    'Load updated imported enrollment',
+  );
+  assert.equal(importedCurrentEnrollment.class_name, 'Class 7A');
+  assert.equal(importedCurrentEnrollment.medium, 'gujarati');
+
+  const invalidImport = await owner.rpc('import_student_roster', {
+    p_academic_year_id: ids.currentYear,
+    p_rows: [
+      {
+        admission_number: 'IM-ROLLBACK', full_name: 'Must Roll Back', class_name: 'Class 2', medium: 'english',
+        annual_fee_amount: 20000, additional_outstanding_amount: 0,
+        opening_collected_cash: 0, opening_collected_upi: 0, opening_collected_other: 0,
+      },
+      {
+        admission_number: 'IM-INVALID', full_name: 'Invalid Over Collection', class_name: 'Class 2', medium: 'english',
+        annual_fee_amount: 1000, additional_outstanding_amount: 0,
+        opening_collected_cash: 2000, opening_collected_upi: 0, opening_collected_other: 0,
+      },
+    ],
+  });
+  assert.ok(invalidImport.error, 'Invalid roster import unexpectedly succeeded');
+  assert.equal(
+    (expectNoError(await owner.from('students').select('id').in('admission_number', ['IM-ROLLBACK', 'IM-INVALID']), 'Check invalid import rollback')).length,
+    0,
+    'Invalid roster import partially committed rows',
+  );
+  const afterImport = await loadFinanceData(owner);
+  assert.equal(afterImport.income_entries.length, 0, 'Opening import incorrectly created income');
+  for (const account of afterImport.accounts) {
+    assert.equal(balanceFor(account.id, afterImport), balancesBeforeImport[account.id], `Import changed account ${account.name} balance`);
+  }
+  pass('CSV/Excel-equivalent roster import, duplicate update, invalid-row rollback, and opening-balance isolation');
+
+  const createdStudentAccount = expectNoError(await owner.rpc('save_student_with_enrollment', {
+    p_student: { admission_number: 'RG-001', full_name: 'Release Gate Student', status: 'active' },
+    p_enrollment: { academic_year_id: ids.currentYear, class_name: 'Class 6', medium: 'english', annual_fee_amount: 150000, additional_outstanding_amount: 0, opening_collected_cash: 5000, opening_collected_upi: 5000, opening_collected_other: 0, opening_snapshot_date: '2026-06-05', status: 'active' },
+  }), 'Add release-gate student with current-year fee account');
+  const student = createdStudentAccount.student;
+  let currentEnrollment = createdStudentAccount.enrollment;
+  const historicalStudentAccount = expectNoError(await owner.rpc('save_student_with_enrollment', {
+    p_student: { id: student.id, admission_number: 'RG-001', full_name: 'Release Gate Student', status: 'active' },
+    p_enrollment: { academic_year_id: ids.oldYear, class_name: 'Class 5', medium: 'english', annual_fee_amount: 50000, additional_outstanding_amount: 0, opening_collected_cash: 10000, opening_collected_upi: 0, opening_collected_other: 0, opening_snapshot_date: '2026-06-04', status: 'active' },
+  }), 'Add historical student fee account');
+  const oldEnrollment = historicalStudentAccount.enrollment;
+  const editedStudentAccount = expectNoError(await owner.rpc('save_student_with_enrollment', {
+    p_student: { id: student.id, admission_number: 'RG-001', full_name: 'Release Gate Student', status: 'active' },
+    p_enrollment: { id: currentEnrollment.id, academic_year_id: ids.currentYear, class_name: 'Class 6', medium: 'english', annual_fee_amount: 150000, additional_outstanding_amount: 0, opening_collected_cash: 5000, opening_collected_upi: 5000, opening_collected_other: 0, opening_snapshot_date: '2026-06-05', status: 'active', notes: 'RPC edit verified' },
+  }), 'Edit existing student fee account');
+  currentEnrollment = editedStudentAccount.enrollment;
+
   expectNoError(await owner.from('income_entries').insert([
     {
       user_id: ownerAuth.user.id, academic_year_id: ids.currentYear, type: 'tuition', amount: 100000,
       date: '2026-08-01', account_id: ids.schoolAccount, is_late_collection: false,
       original_year_id: null, notes: 'Current tuition release gate', tags: ['release-gate'],
+      student_enrollment_id: currentEnrollment.id, payment_method: 'upi', payment_reference: 'UPI-RG-001',
     },
     {
       user_id: ownerAuth.user.id, academic_year_id: ids.currentYear, type: 'tuition', amount: 30000,
       date: '2026-08-02', account_id: ids.schoolAccount, is_late_collection: true,
       original_year_id: ids.oldYear, notes: 'Old fees release gate', tags: ['release-gate'],
+      student_enrollment_id: oldEnrollment.id, payment_method: 'cash', payment_reference: 'CASH-RG-001',
     },
     {
       user_id: ownerAuth.user.id, academic_year_id: ids.currentYear, type: 'lunch', amount: 10000,
@@ -354,7 +443,24 @@ async function main() {
   assert.equal(data.recoverable_repayments.length, 1);
   assert.equal(Number(data.recoverables[0].original_amount) - Number(data.recoverable_repayments[0].amount), 25000);
   assert.equal(data.accounts.find((row) => row.id === ids.archivedAccount)?.is_archived, true);
-  pass('tuition, old fees, lunch, investment income, profit semantics, pending fees, and balances');
+  const currentStudentPayments = data.income_entries.filter((row) => row.student_enrollment_id === currentEnrollment.id);
+  const oldStudentPayments = data.income_entries.filter((row) => row.student_enrollment_id === oldEnrollment.id);
+  const currentOpening = Number(currentEnrollment.opening_collected_cash)
+    + Number(currentEnrollment.opening_collected_upi) + Number(currentEnrollment.opening_collected_other);
+  const oldOpening = Number(oldEnrollment.opening_collected_cash)
+    + Number(oldEnrollment.opening_collected_upi) + Number(oldEnrollment.opening_collected_other);
+  const currentPaid = currentStudentPayments.reduce((sum, row) => sum + Number(row.amount), 0);
+  const oldPaid = oldStudentPayments.reduce((sum, row) => sum + Number(row.amount), 0);
+  assert.equal(currentStudentPayments.length, 1, 'Current-year fee was counted more than once');
+  assert.equal(oldStudentPayments.length, 1, 'Previous-year fee was counted more than once');
+  assert.equal(currentPaid, 100000);
+  assert.equal(oldPaid, 30000);
+  assert.equal(Number(currentEnrollment.annual_fee_amount) - currentOpening - currentPaid, 40000, 'Current student pending balance is wrong');
+  assert.equal(Number(oldEnrollment.annual_fee_amount) - oldOpening - oldPaid, 10000, 'Previous student pending balance is wrong');
+  assert.equal(currentPaid + oldPaid, 130000, 'Student-linked income total is wrong');
+  assert.equal(financialSummary(data, ids).currentTuition, currentPaid, 'Opening current-year history was double-counted as income');
+  assert.equal(financialSummary(data, ids).oldFees, oldPaid, 'Opening previous-year history was double-counted as income');
+  pass('student current/previous fees, pending balances, Income, accounts, Dashboard/Reports semantics, and no double counting');
 
   const historyCounts = {
     income: data.income_entries.length,
@@ -381,7 +487,7 @@ async function main() {
   pass('Current Balance editing preserves history and reaches the exact entered amount');
 
   const backup = {
-    version: '2.0',
+    version: '3.0',
     date: new Date().toISOString(),
     data,
   };

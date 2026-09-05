@@ -200,6 +200,7 @@ export default function SetupWizard() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label={`Remove ${acc.name || 'personal account'}`}
                       className="mt-1 text-muted-foreground hover:text-destructive"
                       onClick={() => removePersonalAccount(acc.key)}
                     >
@@ -237,13 +238,13 @@ export default function SetupWizard() {
           <div className="space-y-5 rounded-lg border bg-card p-5">
             <h2 className="text-lg font-semibold">Set Up Academic Year {ayLabel}</h2>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
               <div className="space-y-1">
                 <label className="text-xs font-medium">Label</label>
                 <Input value={ayLabel} onChange={(e) => setAyLabel(e.target.value)} />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium">Target Tuition Fees (₹)</label>
+                <label className="text-xs font-medium">Current-Year Tuition Target (₹)</label>
                 <Input
                   type="number"
                   placeholder="e.g., 3000000"
@@ -260,6 +261,9 @@ export default function SetupWizard() {
                 <Input type="date" value={ayEndDate} onChange={(e) => setAyEndDate(e.target.value)} />
               </div>
             </div>
+            <p className="rounded-md bg-primary/5 p-3 text-xs text-muted-foreground">
+              Enter tuition expected from this academic year only. Older unpaid fees can be added later under Income → Previous-Year Fees Pending.
+            </p>
 
             <div className="space-y-3">
               <h3 className="text-sm font-semibold">Recurring Expense Templates</h3>

@@ -8,6 +8,7 @@ const emptyV2 = {
     transfers: [], recurring_templates: [], recoverables: [], recoverable_repayments: [],
   },
 };
+const emptyV3 = { ...emptyV2, version: '3.0', data: { ...emptyV2.data, students: [], student_enrollments: [] } };
 
 describe('finance backup validation', () => {
   it('accepts a structurally complete version 2 backup', () => {
@@ -24,5 +25,12 @@ describe('finance backup validation', () => {
     const malformed = structuredClone(emptyV2);
     malformed.data.transfers.push({ amount: -1 } as never);
     expect(() => parseFinanceBackup(malformed)).toThrow(/transfers/);
+  });
+
+  it('accepts version 3 student data and rejects a missing student table', () => {
+    expect(parseFinanceBackup(emptyV3).version).toBe('3.0');
+    const malformed = structuredClone(emptyV3);
+    delete (malformed.data as Partial<typeof malformed.data>).student_enrollments;
+    expect(() => parseFinanceBackup(malformed)).toThrow(/student_enrollments/);
   });
 });

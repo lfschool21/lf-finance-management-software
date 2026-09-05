@@ -5,6 +5,7 @@ import {
   getAccountBalance,
   getAccountMovement,
   getFeeOutstanding,
+  getFeeOutstandingAsOf,
   getIncomeBreakdown,
   getRecoverableSummary,
   inferTransferCategory,
@@ -22,7 +23,7 @@ const year: AcademicYear = {
 
 function income(overrides: Partial<IncomeEntry> = {}): IncomeEntry {
   return { id: crypto.randomUUID(), academicYearId: 'y2', category: 'Tuition Fees', amount: 30_000,
-    date: new Date(2026, 7, 15), accountId: 'a', isLateCollection: true, originalYearId: 'y1', notes: '', tags: [], ...overrides };
+    date: new Date(2026, 7, 15), accountId: 'a', isLateCollection: true, originalYearId: 'y1', studentEnrollmentId: null, paymentMethod: null, paymentReference: '', notes: '', tags: [], ...overrides };
 }
 
 describe('financial domain', () => {
@@ -50,6 +51,29 @@ describe('financial domain', () => {
     const payment = income({ id: 'late', amount: 30_000 });
     expect(getFeeOutstanding(year, [payment]).remaining).toBe(50_000);
     expect(getFeeOutstanding(year, [payment], 'late').remaining).toBe(80_000);
+  });
+
+  it('keeps academic-year-end fee status stable after a later old-fee payment', () => {
+    const paidDuringYear = income({ id: 'during', amount: 20_000, date: new Date(2026, 4, 20) });
+    const paidAfterYear = income({ id: 'after', amount: 30_000, date: new Date(2026, 7, 15) });
+
+    expect(getFeeOutstanding(year, [paidDuringYear, paidAfterYear]).remaining).toBe(30_000);
+    expect(getFeeOutstandingAsOf(year, [paidDuringYear, paidAfterYear], year.endDate)).toMatchObject({
+      collected: 20_000,
+      remaining: 60_000,
+    });
+  });
+
+  it('counts carry-forward once in historical fee obligations', () => {
+    const yearWithAdditionalBalance = { ...year, carryForwardFees: 10_000 };
+    const payment = income({ amount: 20_000, date: new Date(2026, 5, 4) });
+
+    expect(getFeeOutstandingAsOf(yearWithAdditionalBalance, [payment], '2026-06-04')).toMatchObject({
+      totalOwed: 90_000,
+      collected: 20_000,
+      remaining: 70_000,
+      carryForward: 10_000,
+    });
   });
 
   it('includes advances and recoveries only in liquid movement', () => {
