@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { useFinanceStore } from '@/store/finance-store';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/services/supabase';
 import { parseNonNegativeAmount, parseStrictNumber } from '@/lib/finance-domain';
+import { DemoBanner } from '@/components/DemoBanner';
 
 interface AccountDraft {
   key: string;
@@ -27,8 +28,40 @@ interface RecurringDraft {
 export default function SetupWizard() {
   const navigate = useNavigate();
   const init = useFinanceStore((s) => s.init);
+  const [checkingExisting, setCheckingExisting] = useState(true);
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    async function checkExistingUser() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          if (mounted) setCheckingExisting(false);
+          return;
+        }
+        const [accountsResult, yearsResult] = await Promise.all([
+          supabase.from('accounts').select('id').eq('user_id', user.id).limit(1),
+          supabase.from('academic_years').select('id').eq('user_id', user.id).limit(1),
+        ]);
+        const exists = (accountsResult.data?.length || 0) > 0 || (yearsResult.data?.length || 0) > 0;
+        if (exists) {
+          navigate('/', { replace: true });
+          return;
+        }
+      } catch {
+        // Allow setup if verification check fails
+      }
+      if (mounted) {
+        setCheckingExisting(false);
+      }
+    }
+    void checkExistingUser();
+    return () => {
+      mounted = false;
+    };
+  }, [navigate]);
 
   // Step 1: Accounts
   const [schoolAccount, setSchoolAccount] = useState<AccountDraft>({
@@ -99,6 +132,7 @@ export default function SetupWizard() {
       if (target === null || !ayStartDate || !ayEndDate || ayStartDate > ayEndDate) {
         throw new Error('Enter valid academic-year dates and a non-negative tuition target');
       }
+
       const templatesPayload = recurringDrafts.map((draft) => {
         const amount = parseNonNegativeAmount(draft.amount || '0');
         if (amount === null) throw new Error(`Enter a valid non-negative amount for ${draft.category}`);
@@ -109,26 +143,45 @@ export default function SetupWizard() {
       const { error } = await supabase.rpc('complete_initial_setup', {
         p_accounts: accountsPayload,
         p_year: {
-          label: ayLabel.trim(), start_date: ayStartDate, end_date: ayEndDate,
-          target_tuition_fees: target, carry_forward_fees: 0, status: 'active',
+          label: ayLabel.trim(),
+          start_date: ayStartDate,
+          end_date: ayEndDate,
+          target_tuition_fees: target,
+          carry_forward_fees: 0,
+          status: 'active',
         },
         p_templates: templatesPayload,
       });
+
       if (error) throw error;
+
       await init();
-      toast({ title: 'Setup complete!', description: 'Your finance tracker is ready.' });
+      toast({ title: 'Setup complete! Welcome to your dashboard.' });
       navigate('/', { replace: true });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Setup failed';
-      toast({ title: 'Error', description: message, variant: 'destructive' });
+    } catch (err) {
+      toast({
+        title: 'Setup failed',
+        description: err instanceof Error ? err.message : 'Database error',
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
   }
 
+  if (checkingExisting) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="w-full max-w-lg space-y-6">
+    <div className="flex min-h-screen flex-col bg-background">
+      <DemoBanner />
+      <div className="flex flex-1 items-center justify-center p-4">
+        <div className="w-full max-w-lg space-y-6">
         {/* Header */}
         <div className="flex flex-col items-center gap-3">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary">
@@ -156,7 +209,7 @@ export default function SetupWizard() {
 
             {/* School Account */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">🏫 School Bank Account</label>
+              <label className="text-sm font-medium">School Bank Account</label>
               <Input
                 placeholder="e.g., SBI School Account"
                 value={schoolAccount.name}
@@ -172,7 +225,7 @@ export default function SetupWizard() {
 
             {/* Personal Accounts */}
             <div className="space-y-3">
-              <label className="text-sm font-medium">👤 Personal Bank Accounts</label>
+              <label className="text-sm font-medium">Personal Bank Accounts</label>
               {personalAccounts.map((acc) => (
                 <div key={acc.key} className="flex gap-2">
                   <div className="flex-1 space-y-2">
@@ -218,7 +271,7 @@ export default function SetupWizard() {
 
             {/* Cash */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">💵 Cash at Home</label>
+              <label className="text-sm font-medium">Cash at Home</label>
               <Input
                 type="number"
                 placeholder="Current cash balance (₹)"
@@ -309,18 +362,18 @@ export default function SetupWizard() {
               <h3 className="text-sm font-semibold">Accounts</h3>
               <div className="space-y-1.5">
                 <ReviewRow
-                  label={`🏫 ${schoolAccount.name || 'School Account'}`}
+                  label={`${schoolAccount.name || 'School Account'}`}
                   value={formatINR(parseFloat(schoolAccount.balance) || 0)}
                 />
                 {personalAccounts.map((a) => (
                   <ReviewRow
                     key={a.key}
-                    label={`👤 ${a.name}`}
+                    label={`${a.name}`}
                     value={formatINR(parseFloat(a.balance) || 0)}
                   />
                 ))}
                 <ReviewRow
-                  label="💵 Cash at Home"
+                  label="Cash at Home"
                   value={formatINR(parseFloat(cashBalance) || 0)}
                 />
               </div>
@@ -366,14 +419,15 @@ export default function SetupWizard() {
                 ) : (
                   <CheckCircle2 className="h-4 w-4" />
                 )}
-                🚀 Start Tracking
+                Start Tracking
               </Button>
             </div>
           </div>
         )}
       </div>
     </div>
-  );
+  </div>
+);
 }
 
 function ReviewRow({ label, value }: { label: string; value: string }) {

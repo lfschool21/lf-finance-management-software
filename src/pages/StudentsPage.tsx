@@ -1,42 +1,579 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Download, FileSpreadsheet, Filter, Plus, Search, Users } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Users, UserPlus, FileSpreadsheet, RotateCcw, Loader2 } from 'lucide-react';
 import { useFinanceStore } from '@/store/finance-store';
 import { useStudentStore } from '@/store/student-store';
-import { getStudentFeeSummary, getStudentPreviousPending, groupRosterByClass, summarizeRoster } from '@/lib/student-fees';
-import { MEDIUM_LABELS, type StudentMedium } from '@/types/students';
-import { formatINR } from '@/utils/currency';
+import {
+  getStudentFeeSummary,
+  getStudentPreviousPending,
+  groupRosterByClass,
+  summarizeRoster,
+} from '@/lib/student-fees';
+import type { Student, StudentEnrollment, StudentMedium } from '@/types/students';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
+import { StudentPageHeader } from '@/components/students/StudentPageHeader';
+import { StudentMediumSwitcher } from '@/components/students/StudentMediumSwitcher';
+import { StudentOverview } from '@/components/students/StudentOverview';
+import { StudentToolbar, type FeeFilterType } from '@/components/students/StudentToolbar';
+import {
+  StudentTable,
+  type SortField,
+  type SortDirection,
+  type StudentRowData,
+} from '@/components/students/StudentTable';
+import { StudentCard } from '@/components/students/StudentCard';
+
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { AddStudentModal } from '@/components/AddStudentModal';
 import { StudentImportWizard } from '@/components/StudentImportWizard';
+import { AddIncomeModal } from '@/components/AddIncomeModal';
+import { RemoveAllStudentsModal } from '@/components/students/RemoveAllStudentsModal';
 import { downloadStudentImportTemplate } from '@/lib/student-import';
+import {
+  compareClassNames,
+  compareAdmissionNumbers,
+  compareStudentsLowestToHighest,
+} from '@/utils/student-order';
 
-type FeeFilter = 'all' | 'paid' | 'partial' | 'unpaid' | 'previous';
+const DEFAULT_PAGE_SIZE = 100;
 
 export default function StudentsPage() {
-  const { academicYears, currentYearId, incomeEntries } = useFinanceStore(); const { students, enrollments } = useStudentStore(); const navigate = useNavigate();
-  const [yearId, setYearId] = useState(currentYearId); const [query, setQuery] = useState(''); const [classFilter, setClassFilter] = useState('all'); const [medium, setMedium] = useState<'all' | StudentMedium>('all'); const [feeFilter, setFeeFilter] = useState<FeeFilter>('all'); const [showAdd, setShowAdd] = useState(false); const [showImport, setShowImport] = useState(false);
-  const year = academicYears.find((item) => item.id === yearId); const roster = enrollments.filter((item) => item.academicYearId === yearId && item.status === 'active');
-  const summary = useMemo(() => summarizeRoster(roster, incomeEntries), [roster, incomeEntries]);
-  const classes = useMemo(() => groupRosterByClass(roster, incomeEntries), [roster, incomeEntries]);
-  const rows = useMemo(() => roster.map((enrollment) => {
-    const student = students.find((item) => item.id === enrollment.studentId); const fees = getStudentFeeSummary(enrollment, incomeEntries); const previous = getStudentPreviousPending(enrollment.studentId, yearId, enrollments, incomeEntries); return { student, enrollment, fees, previous };
-  }).filter((row) => row.student).filter((row) => { const q = query.trim().toLowerCase(); if (q && !row.student!.fullName.toLowerCase().includes(q) && !row.student!.admissionNumber.toLowerCase().includes(q)) return false; if (classFilter !== 'all' && row.enrollment.className !== classFilter) return false; if (medium !== 'all' && row.enrollment.medium !== medium) return false; if (feeFilter === 'paid' && row.fees.status !== 'paid') return false; if (feeFilter === 'partial' && row.fees.status !== 'partially_paid') return false; if (feeFilter === 'unpaid' && row.fees.status !== 'not_paid') return false; if (feeFilter === 'previous' && row.previous <= 0) return false; return true; }), [roster, students, incomeEntries, yearId, enrollments, query, classFilter, medium, feeFilter]);
-  const linkedCurrent = incomeEntries.filter((entry) => entry.studentEnrollmentId && roster.some((item) => item.id === entry.studentEnrollmentId)).reduce((sum, entry) => sum + entry.amount, 0);
-  const globalCurrent = incomeEntries.filter((entry) => entry.category === 'Tuition Fees' && !entry.isLateCollection && entry.academicYearId === yearId).reduce((sum, entry) => sum + entry.amount, 0);
-  return <div className="space-y-6 animate-fade-in"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">School</p><h1 className="text-2xl font-bold">Students</h1><p className="text-sm text-muted-foreground">Roster and student fee accounts</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={downloadStudentImportTemplate}><Download className="mr-2 h-4 w-4" />Template</Button><Button variant="outline" onClick={() => setShowImport(true)}><FileSpreadsheet className="mr-2 h-4 w-4" />Import</Button><Button onClick={() => setShowAdd(true)}><Plus className="mr-2 h-4 w-4" />Add Student</Button></div></div>
-    <div className="max-w-xs"><Select value={yearId} onValueChange={setYearId}><SelectTrigger aria-label="Academic year"><SelectValue /></SelectTrigger><SelectContent>{academicYears.map((item) => <SelectItem key={item.id} value={item.id}>Academic Year {item.label}</SelectItem>)}</SelectContent></Select></div>
-    <section className="rounded-xl border bg-card p-4 sm:p-5"><div className="mb-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">School Strength</p><h2 className="text-lg font-semibold">AY {year?.label || '—'}</h2></div><div className="grid grid-cols-2 gap-4 lg:grid-cols-5"><Metric label="Total Students" value={summary.totalStudents} prominent /><Metric label="English Medium" value={summary.english} /><Metric label="Gujarati Medium" value={summary.gujarati} /><Metric label="Fees Pending" value={summary.pendingStudents} tone="warning" /><Metric label="Fully Paid" value={summary.fullyPaidStudents} tone="income" /></div></section>
-    <section className="rounded-xl border bg-card"><div className="border-b p-4"><h2 className="font-semibold">Class Strength & Fees</h2><p className="text-xs text-muted-foreground">Active students in this academic year</p></div>{classes.length ? <><div className="hidden overflow-auto md:block"><table className="w-full text-sm"><thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="p-3">Class</th><th>English</th><th>Gujarati</th><th>Total</th><th>Current Fees</th><th>Collected</th><th>Pending</th></tr></thead><tbody>{classes.map((item) => <tr key={item.className} className="border-b last:border-0"><td className="p-3 font-medium">{item.className}</td><td>{item.english}</td><td>{item.gujarati}</td><td>{item.totalStudents}</td><td>{formatINR(item.obligation)}</td><td className="text-income">{formatINR(item.collected)}</td><td className="text-warning">{formatINR(item.pending)}</td></tr>)}</tbody></table></div><div className="divide-y md:hidden">{classes.map((item) => <div key={item.className} className="p-4"><div className="flex justify-between"><span className="font-semibold">{item.className}</span><span>{item.totalStudents} students</span></div><p className="mt-1 text-xs text-muted-foreground">English {item.english} · Gujarati {item.gujarati}</p><div className="mt-3 grid grid-cols-2 gap-2 text-xs"><span>Collected <strong className="block text-income">{formatINR(item.collected)}</strong></span><span>Pending <strong className="block text-warning">{formatINR(item.pending)}</strong></span></div></div>)}</div></> : <p className="p-8 text-center text-sm text-muted-foreground">No students added for AY {year?.label}. Import your roster or add one student manually.</p>}</section>
-    <section className="rounded-xl border bg-card p-4"><h2 className="font-semibold">Roster Reconciliation</h2><p className="mb-4 text-xs text-muted-foreground">Student subledger compared with the existing aggregate finance ledger</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Money label="Academic-Year Tuition Target" value={year?.targetTuitionFees || 0}/><Money label="Student Roster Fee Total" value={summary.obligation}/><Money label="Target Difference" value={(year?.targetTuitionFees || 0) - summary.obligation} tone="warning"/><Money label="Unassigned Tuition Received" value={globalCurrent - linkedCurrent} tone="warning"/></div></section>
-    <section className="space-y-3"><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/><Input className="pl-9" placeholder="Search students or admission number..." value={query} onChange={(e) => setQuery(e.target.value)}/></div><div className="grid grid-cols-2 gap-2 lg:grid-cols-4"><Select value={classFilter} onValueChange={setClassFilter}><SelectTrigger><SelectValue placeholder="Class"/></SelectTrigger><SelectContent><SelectItem value="all">All Classes</SelectItem>{classes.map((item) => <SelectItem key={item.className} value={item.className}>{item.className}</SelectItem>)}</SelectContent></Select><Select value={medium} onValueChange={(value) => setMedium(value as 'all' | StudentMedium)}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Mediums</SelectItem><SelectItem value="english">English</SelectItem><SelectItem value="gujarati">Gujarati</SelectItem></SelectContent></Select><Select value={feeFilter} onValueChange={(value) => setFeeFilter(value as FeeFilter)}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Fee Statuses</SelectItem><SelectItem value="paid">Fully Paid</SelectItem><SelectItem value="partial">Partially Paid</SelectItem><SelectItem value="unpaid">Not Paid</SelectItem><SelectItem value="previous">Previous-Year Dues</SelectItem></SelectContent></Select><Button variant="outline" onClick={() => { setQuery(''); setClassFilter('all'); setMedium('all'); setFeeFilter('all'); }}><Filter className="mr-2 h-4 w-4"/>Clear Filters</Button></div>
-      {rows.length ? <div className="grid gap-3 lg:grid-cols-2">{rows.map(({ student, enrollment, fees, previous }) => <button type="button" key={enrollment.id} onClick={() => navigate(`/students/${student!.id}`)} className="rounded-lg border bg-card p-4 text-left transition hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-semibold">{student!.fullName}</p><p className="text-xs text-muted-foreground">{student!.admissionNumber || 'No admission number'} · {enrollment.className} · {MEDIUM_LABELS[enrollment.medium]}</p></div><FeeBadge status={fees.status}/></div><div className="mt-4 grid grid-cols-3 gap-2 text-xs"><span>Fee<strong className="money-fit block font-mono text-sm">{formatINR(fees.obligation)}</strong></span><span>Paid<strong className="money-fit block font-mono text-sm text-income">{formatINR(fees.collected)}</strong></span><span>Pending<strong className="money-fit block font-mono text-sm text-warning">{formatINR(fees.pending)}</strong></span></div>{previous > 0 && <p className="mt-3 border-t pt-2 text-xs font-medium text-warning">Previous-year pending: {formatINR(previous)}</p>}</button>)}</div> : <div className="rounded-xl border border-dashed p-10 text-center"><Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30"/><p className="font-medium">No students match these filters</p></div>}
-    </section><AddStudentModal open={showAdd} onClose={() => setShowAdd(false)} defaultYearId={yearId}/><StudentImportWizard open={showImport} onClose={() => setShowImport(false)} defaultYearId={yearId}/></div>;
-}
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { academicYears, currentYearId, incomeEntries } = useFinanceStore();
+  const { students, enrollments, isLoading: storeLoading } = useStudentStore();
 
-function Metric({ label, value, prominent, tone }: { label: string; value: number; prominent?: boolean; tone?: 'warning' | 'income' }) { return <div><p className="text-xs text-muted-foreground">{label}</p><p className={`${prominent ? 'text-3xl' : 'text-2xl'} font-bold ${tone === 'warning' ? 'text-warning' : tone === 'income' ? 'text-income' : ''}`}>{value}</p></div>; }
-function Money({ label, value, tone }: { label: string; value: number; tone?: 'warning' }) { return <div className="rounded-lg bg-muted/40 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className={`money-fit mt-1 font-mono font-semibold ${tone ? 'text-warning' : ''}`}>{formatINR(value)}</p></div>; }
-function FeeBadge({ status }: { status: 'not_paid' | 'partially_paid' | 'paid' }) { return <Badge variant="outline" className={status === 'paid' ? 'border-income/30 text-income' : status === 'partially_paid' ? 'border-warning/30 text-warning' : 'border-destructive/30 text-destructive'}>{status === 'paid' ? 'Paid' : status === 'partially_paid' ? 'Partially Paid' : 'Not Paid'}</Badge>; }
+  // Selected Academic Year
+  const [yearId, setYearId] = useState(currentYearId);
+
+  // Search and Filter states
+  const [query, setQuery] = useState('');
+  const [classFilter, setClassFilter] = useState('all');
+
+  // URL-synchronized medium state
+  const mediumQuery = searchParams.get('medium');
+  const initialMedium: 'all' | StudentMedium =
+    mediumQuery === 'gujarati' || mediumQuery === 'english' ? mediumQuery : 'all';
+  const [activeMedium, setActiveMedium] = useState<'all' | StudentMedium>(initialMedium);
+
+  const [feeFilter, setFeeFilter] = useState<FeeFilterType>('all');
+
+  // Sorting state: default to 'class' ascending (from lowest to highest class, then lowest to highest admission)
+  const [sortField, setSortField] = useState<SortField>('class');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  // Pagination state: default 100 per page, supports viewing all students
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [page, setPage] = useState(1);
+
+  // View mode: default to professional 'cards' design
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+
+  // Modals
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showRemoveAllModal, setShowRemoveAllModal] = useState(false);
+  const [editingData, setEditingData] = useState<{
+    student: Student;
+    enrollment: StudentEnrollment;
+  } | null>(null);
+  const [paymentEnrollmentId, setPaymentEnrollmentId] = useState<string | undefined>(undefined);
+
+  // Keep state in sync if URL query parameter changes
+  useEffect(() => {
+    const m = searchParams.get('medium');
+    const valid: 'all' | StudentMedium = m === 'gujarati' || m === 'english' ? m : 'all';
+    if (valid !== activeMedium) {
+      setActiveMedium(valid);
+    }
+  }, [searchParams, activeMedium]);
+
+  const handleMediumChange = (newMedium: 'all' | StudentMedium) => {
+    setActiveMedium(newMedium);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (newMedium === 'all') {
+          next.delete('medium');
+        } else {
+          next.set('medium', newMedium);
+        }
+        return next;
+      },
+      { replace: true }
+    );
+  };
+
+  // Ensure valid academic year is selected
+  useEffect(() => {
+    if (!yearId || !academicYears.some((item) => item.id === yearId)) {
+      const fallback =
+        currentYearId ||
+        academicYears.find((item) => item.status === 'active')?.id ||
+        academicYears[0]?.id ||
+        '';
+      if (fallback) setYearId(fallback);
+    }
+  }, [currentYearId, academicYears, yearId]);
+
+  // Reset page whenever search, medium, or filters change
+  useEffect(() => {
+    setPage(1);
+  }, [query, classFilter, activeMedium, feeFilter, yearId]);
+
+  const year = useMemo(
+    () => academicYears.find((item) => item.id === yearId),
+    [academicYears, yearId]
+  );
+
+  // Active roster for selected academic year
+  const roster = useMemo(
+    () => enrollments.filter((item) => item.academicYearId === yearId && item.status === 'active'),
+    [enrollments, yearId]
+  );
+
+  // Dynamic medium student counts
+  const allCount = roster.length;
+  const gujaratiCount = useMemo(() => roster.filter((r) => r.medium === 'gujarati').length, [roster]);
+  const englishCount = useMemo(() => roster.filter((r) => r.medium === 'english').length, [roster]);
+
+  // Medium-scoped roster for active view
+  const mediumScopedRoster = useMemo(() => {
+    if (activeMedium === 'all') return roster;
+    return roster.filter((r) => r.medium === activeMedium);
+  }, [roster, activeMedium]);
+
+  // Summary and class groupings scoped to the active medium
+  const summary = useMemo(() => summarizeRoster(mediumScopedRoster, incomeEntries), [mediumScopedRoster, incomeEntries]);
+  const classes = useMemo(() => groupRosterByClass(mediumScopedRoster, incomeEntries), [mediumScopedRoster, incomeEntries]);
+
+  // Unique classes available for filter dropdown (from scoped roster, arranged from lowest to highest grade)
+  const availableClasses = useMemo(
+    () => Array.from(new Set(mediumScopedRoster.map((r) => r.className))).sort(compareClassNames),
+    [mediumScopedRoster]
+  );
+
+  // Auto-reset class filter if current classFilter is not available in active medium
+  useEffect(() => {
+    if (classFilter !== 'all' && !availableClasses.includes(classFilter)) {
+      setClassFilter('all');
+    }
+  }, [availableClasses, classFilter]);
+
+  // Fast student lookup map
+  const studentMap = useMemo(() => {
+    const map = new Map<string, Student>();
+    for (const s of students) {
+      map.set(s.id, s);
+    }
+    return map;
+  }, [students]);
+
+  // Reconciliation amounts
+  const linkedCurrent = useMemo(
+    () =>
+      incomeEntries
+        .filter(
+          (entry) =>
+            entry.studentEnrollmentId &&
+            roster.some((item) => item.id === entry.studentEnrollmentId)
+        )
+        .reduce((sum, entry) => sum + entry.amount, 0),
+    [incomeEntries, roster]
+  );
+
+  const globalCurrent = useMemo(
+    () =>
+      incomeEntries
+        .filter(
+          (entry) =>
+            entry.category === 'Tuition Fees' &&
+            !entry.isLateCollection &&
+            entry.academicYearId === yearId
+        )
+        .reduce((sum, entry) => sum + entry.amount, 0),
+    [incomeEntries, yearId]
+  );
+
+  const unassignedTuition = globalCurrent - linkedCurrent;
+
+  // Build full row data for mediumScopedRoster with memoization
+  const allRows = useMemo(() => {
+    const rows: StudentRowData[] = [];
+    for (const enrollment of mediumScopedRoster) {
+      const student = studentMap.get(enrollment.studentId);
+      if (!student) continue;
+
+      const fees = getStudentFeeSummary(enrollment, incomeEntries);
+      const previous = getStudentPreviousPending(
+        enrollment.studentId,
+        yearId,
+        enrollments,
+        incomeEntries
+      );
+
+      rows.push({ student, enrollment, fees, previous });
+    }
+    return rows;
+  }, [mediumScopedRoster, studentMap, incomeEntries, yearId, enrollments]);
+
+  // Filter rows based on search query, class, fee status
+  const filteredRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+
+    return allRows.filter(({ student, enrollment, fees, previous }) => {
+      // Search matching (name or admission number)
+      if (q) {
+        const matchesName = student.fullName.toLowerCase().includes(q);
+        const matchesAdm = student.admissionNumber.toLowerCase().includes(q);
+        if (!matchesName && !matchesAdm) return false;
+      }
+
+      // Class filter
+      if (classFilter !== 'all' && enrollment.className !== classFilter) {
+        return false;
+      }
+
+      // Fee status filter
+      if (feeFilter === 'paid' && fees.status !== 'paid') return false;
+      if (feeFilter === 'partial' && fees.status !== 'partially_paid') return false;
+      if (feeFilter === 'unpaid' && fees.status !== 'not_paid') return false;
+      if (feeFilter === 'previous' && previous <= 0) return false;
+
+      return true;
+    });
+  }, [allRows, query, classFilter, feeFilter]);
+
+  // Sort filtered rows: default ascending order from lowest to highest
+  const sortedRows = useMemo(() => {
+    return [...filteredRows].sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case 'class':
+          // 1. Lowest class to highest class
+          comparison = compareClassNames(a.enrollment.className, b.enrollment.className);
+          // 2. Lowest admission number to highest
+          if (comparison === 0) {
+            comparison = compareAdmissionNumbers(a.student.admissionNumber, b.student.admissionNumber);
+          }
+          // 3. Name A-Z
+          if (comparison === 0) {
+            comparison = a.student.fullName.localeCompare(b.student.fullName, undefined, { sensitivity: 'base' });
+          }
+          break;
+        case 'admission':
+          // 1. Lowest admission number to highest
+          comparison = compareAdmissionNumbers(a.student.admissionNumber, b.student.admissionNumber);
+          // 2. Lowest class to highest
+          if (comparison === 0) {
+            comparison = compareClassNames(a.enrollment.className, b.enrollment.className);
+          }
+          // 3. Name A-Z
+          if (comparison === 0) {
+            comparison = a.student.fullName.localeCompare(b.student.fullName, undefined, { sensitivity: 'base' });
+          }
+          break;
+        case 'name':
+          comparison = a.student.fullName.localeCompare(b.student.fullName, undefined, { sensitivity: 'base' });
+          if (comparison === 0) {
+            comparison = compareClassNames(a.enrollment.className, b.enrollment.className);
+          }
+          if (comparison === 0) {
+            comparison = compareAdmissionNumbers(a.student.admissionNumber, b.student.admissionNumber);
+          }
+          break;
+        case 'obligation':
+          comparison = a.fees.obligation - b.fees.obligation;
+          break;
+        case 'collected':
+          comparison = a.fees.collected - b.fees.collected;
+          break;
+        case 'pending':
+          comparison = a.fees.pending - b.fees.pending;
+          break;
+        case 'previous':
+          comparison = a.previous - b.previous;
+          break;
+        case 'default':
+        default:
+          comparison = compareStudentsLowestToHighest(a, b);
+          break;
+      }
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [filteredRows, sortField, sortDirection]);
+
+  // Paginated rows
+  const paginatedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedRows.slice(start, start + pageSize);
+  }, [sortedRows, page, pageSize]);
+
+  const displayedStart = filteredRows.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const displayedEnd = Math.min(page * pageSize, filteredRows.length);
+
+  // Handle header sorting click
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Reset search and filters
+  const handleResetFilters = () => {
+    setQuery('');
+    setClassFilter('all');
+    setFeeFilter('all');
+  };
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      {/* 1. Page Header */}
+      <StudentPageHeader
+        academicYears={academicYears}
+        selectedYearId={yearId}
+        onYearChange={setYearId}
+        onAddStudent={() => setShowAddModal(true)}
+        onImportStudents={() => setShowImportModal(true)}
+        onDownloadTemplate={downloadStudentImportTemplate}
+        onRemoveAllStudents={() => setShowRemoveAllModal(true)}
+        totalStudentsCount={students.length}
+      />
+
+      {/* 2. Top-Level Medium Workspace Switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <StudentMediumSwitcher
+          activeMedium={activeMedium}
+          onChange={handleMediumChange}
+          allCount={allCount}
+          gujaratiCount={gujaratiCount}
+          englishCount={englishCount}
+        />
+      </div>
+
+      {/* 3. Compact Overview & Progressive Disclosure for Class Reconciliation */}
+      <StudentOverview
+        summary={summary}
+        classes={classes}
+        year={year}
+        unassignedTuition={unassignedTuition}
+        activeMedium={activeMedium}
+      />
+
+      {/* 4. Student Toolbar (Search & Filter + View Mode Toggle) */}
+      <StudentToolbar
+        searchQuery={query}
+        onSearchChange={setQuery}
+        classFilter={classFilter}
+        onClassChange={setClassFilter}
+        feeFilter={feeFilter}
+        onFeeFilterChange={setFeeFilter}
+        availableClasses={availableClasses}
+        totalCount={mediumScopedRoster.length}
+        filteredCount={filteredRows.length}
+        activeMedium={activeMedium}
+        displayedStart={displayedStart}
+        displayedEnd={displayedEnd}
+        pageSize={pageSize}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setPage(1);
+        }}
+        onResetFilters={handleResetFilters}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+      />
+
+      {/* 5. Student Roster Views (Professional Cards Grid [Default] + Dense Table) */}
+      {storeLoading && allRows.length === 0 ? (
+        <div className="rounded-xl border bg-card p-12 text-center">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground/60" />
+          <p className="mt-3 text-sm text-muted-foreground">Loading student records...</p>
+        </div>
+      ) : mediumScopedRoster.length === 0 ? (
+        /* Empty state: No students enrolled in this academic year or selected medium */
+        <div className="rounded-xl border border-dashed bg-card p-10 text-center space-y-3">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Users className="h-6 w-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-foreground">
+              No {activeMedium === 'all' ? '' : activeMedium === 'gujarati' ? 'Gujarati Medium ' : 'English Medium '}
+              students enrolled in AY {year?.label || 'this year'}
+            </h3>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+              {activeMedium === 'all'
+                ? 'Add your first student manually or import your existing student roster from an Excel sheet.'
+                : `There are currently no students in ${activeMedium === 'gujarati' ? 'Gujarati Medium' : 'English Medium'} for this academic year.`}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+            <Button size="sm" onClick={() => setShowAddModal(true)} className="text-xs gap-1.5">
+              <UserPlus className="h-3.5 w-3.5" />
+              <span>Add Student</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowImportModal(true)}
+              className="text-xs gap-1.5"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>Import Students</span>
+            </Button>
+          </div>
+        </div>
+      ) : filteredRows.length === 0 ? (
+        /* Empty state: Search/Filters return 0 results */
+        <div className="rounded-xl border border-dashed bg-card p-10 text-center space-y-3">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Users className="h-6 w-6 opacity-40" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-foreground">No students match your filters</h3>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+              Try modifying your search term or clearing filters to see all enrolled students.
+            </p>
+          </div>
+          <div className="pt-1">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleResetFilters}
+              className="text-xs gap-1.5"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Clear Filters</span>
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <section aria-label="Student Roster">
+          {viewMode === 'cards' ? (
+            /* Professional Responsive Card Grid View (Default) */
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {paginatedRows.map((row) => (
+                  <StudentCard
+                    key={row.enrollment.id}
+                    row={row}
+                    onSelectStudent={(id) => navigate(`/students/${id}`)}
+                    onRecordPayment={(enrollmentId) => setPaymentEnrollmentId(enrollmentId)}
+                    onEditStudent={(std, enr) => setEditingData({ student: std, enrollment: enr })}
+                    activeMedium={activeMedium}
+                  />
+                ))}
+              </div>
+
+              {/* Cards Grid Pagination Bar */}
+              {filteredRows.length > pageSize && (
+                <div className="flex items-center justify-between border rounded-xl bg-card px-4 py-3 text-xs text-muted-foreground shadow-xs">
+                  <p>
+                    Showing <span className="font-medium text-foreground">{displayedStart}</span> to{' '}
+                    <span className="font-medium text-foreground">{displayedEnd}</span> of{' '}
+                    <span className="font-medium text-foreground">{filteredRows.length}</span> students
+                  </p>
+
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1}
+                      className="h-8 w-8 p-0"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="px-2 font-medium text-foreground">
+                      Page {page} of {Math.ceil(filteredRows.length / pageSize)}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPage((p) =>
+                          Math.min(Math.ceil(filteredRows.length / pageSize), p + 1)
+                        )
+                      }
+                      disabled={page >= Math.ceil(filteredRows.length / pageSize)}
+                      className="h-8 w-8 p-0"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Dense Spreadsheet Table View */
+            <StudentTable
+              rows={paginatedRows}
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSort={handleSort}
+              onSelectStudent={(id) => navigate(`/students/${id}`)}
+              onRecordPayment={(enrollmentId) => setPaymentEnrollmentId(enrollmentId)}
+              onEditStudent={(std, enr) => setEditingData({ student: std, enrollment: enr })}
+              page={page}
+              pageSize={pageSize}
+              totalRows={filteredRows.length}
+              onPageChange={setPage}
+              activeMedium={activeMedium}
+            />
+          )}
+        </section>
+      )}
+
+      {/* Add / Edit Student Modal */}
+      <AddStudentModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        defaultYearId={yearId}
+        defaultMedium={activeMedium !== 'all' ? activeMedium : undefined}
+      />
+
+      {editingData && (
+        <AddStudentModal
+          open={!!editingData}
+          onClose={() => setEditingData(null)}
+          student={editingData.student}
+          enrollment={editingData.enrollment}
+          defaultYearId={yearId}
+          defaultMedium={editingData.enrollment.medium}
+        />
+      )}
+
+      {/* Roster Import Wizard */}
+      <StudentImportWizard
+        open={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        defaultYearId={yearId}
+        defaultMedium={activeMedium !== 'all' ? activeMedium : undefined}
+      />
+
+      {/* Quick Record Payment Modal from Table / Mobile Cards */}
+      <AddIncomeModal
+        isOpen={!!paymentEnrollmentId}
+        onClose={() => setPaymentEnrollmentId(undefined)}
+        presetStudentEnrollmentId={paymentEnrollmentId}
+      />
+
+      {/* Remove All Students Confirmation Modal */}
+      <RemoveAllStudentsModal
+        open={showRemoveAllModal}
+        onClose={() => setShowRemoveAllModal(false)}
+        yearId={yearId}
+        yearLabel={year?.label}
+        yearStudentCount={roster.length}
+        totalStudentCount={students.length}
+      />
+
+
+    </div>
+  );
+}

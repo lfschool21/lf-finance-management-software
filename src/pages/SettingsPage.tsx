@@ -17,8 +17,10 @@ import {
   Upload,
   LogOut,
 } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 import { useNavigate } from 'react-router-dom';
 import { useFinanceStore } from '@/store/finance-store';
+import { useTranslation } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,12 +35,15 @@ import * as accountsService from '@/services/accounts';
 import * as academicYearsService from '@/services/academicYears';
 import * as recurringService from '@/services/recurring';
 import { signOut, getCurrentUser } from '@/services/auth';
+import { isDemoUser } from '@/lib/demo-mode';
+import { exitDemo } from '@/services/demo';
 import type { RecurringTemplate } from '@/types/finance';
 import { parseNonNegativeAmount, parseStrictNumber } from '@/lib/finance-domain';
 import { parseFinanceBackup } from '@/lib/finance-backup';
 import type { Json } from '@/integrations/supabase/types';
 
 export default function SettingsPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const {
     isDarkMode, toggleDarkMode, accounts, academicYears, recurringTemplates,
@@ -87,11 +92,28 @@ export default function SettingsPage() {
   // Backup
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreConfirm, setRestoreConfirm] = useState<{ date: string; counts: string; execute: () => Promise<void> } | null>(null);
 
   const [userEmail, setUserEmail] = useState('');
+  const [isDemo, setIsDemo] = useState(false);
+
   useEffect(() => {
-    getCurrentUser().then((u) => { if (u?.email) setUserEmail(u.email); });
+    getCurrentUser().then((u) => {
+      if (u?.email) setUserEmail(u.email);
+      setIsDemo(isDemoUser(u));
+    });
   }, []);
+
+  function handleOpenPasswordModal() {
+    if (isDemo) {
+      toast({
+        title: 'Demo Session',
+        description: 'Password management is available after creating a permanent account.',
+      });
+      return;
+    }
+    setShowPasswordModal(true);
+  }
 
   // Password
   async function handleChangePassword() {
@@ -101,7 +123,7 @@ export default function SettingsPage() {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     setPwLoading(false);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
-    toast({ title: '✅ Password updated' });
+    toast({ title: 'Password updated' });
     setShowPasswordModal(false);
     setNewPassword(''); setConfirmPassword('');
   }
@@ -131,7 +153,7 @@ export default function SettingsPage() {
       if (result.error) throw result.error;
       await refreshAccounts();
       setShowAccountModal(false);
-      toast({ title: editAccountId ? '✅ Account updated' : '✅ Account added' });
+      toast({ title: editAccountId ? 'Account updated' : 'Account added' });
     } catch (err) {
       toast({ title: 'Account save failed', description: err instanceof Error ? err.message : 'Database error', variant: 'destructive' });
     } finally {
@@ -193,7 +215,7 @@ export default function SettingsPage() {
       if (result.error) throw result.error;
       await refreshAcademicYears();
       setShowYearModal(false);
-      toast({ title: editYearId ? '✅ Year updated' : '✅ Year added' });
+      toast({ title: editYearId ? 'Year updated' : 'Year added' });
     } catch (err) {
       toast({ title: 'Academic year save failed', description: err instanceof Error ? err.message : 'Database error', variant: 'destructive' });
     } finally {
@@ -228,7 +250,7 @@ export default function SettingsPage() {
       if (result.error) throw result.error;
       await refreshRecurringTemplates();
       setShowRecurringModal(false);
-      toast({ title: editRecurringId ? '✅ Template updated' : '✅ Template added' });
+      toast({ title: editRecurringId ? 'Template updated' : 'Template added' });
     } catch (err) {
       toast({ title: 'Template save failed', description: err instanceof Error ? err.message : 'Database error', variant: 'destructive' });
     } finally {
@@ -260,7 +282,7 @@ export default function SettingsPage() {
       a.download = `little-flowers-backup-${new Date().toISOString().split('T')[0]}.lfbackup`;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: '✅ Backup created and downloaded' });
+      toast({ title: 'Backup created and downloaded' });
     } catch (err) {
       toast({ title: 'Backup failed', description: err instanceof Error ? err.message : 'Database error', variant: 'destructive' });
     } finally {
@@ -284,22 +306,35 @@ export default function SettingsPage() {
           .map(([table, rows]) => `${table}: ${rows.length} rows`)
           .join(', ');
 
-        if (!confirm(`Restore backup from ${backup.date}?\n\nData: ${counts}\n\nThis will replace ALL current data.`)) {
-          setRestoreLoading(false);
-          return;
-        }
-
-        const { error } = await supabase.rpc('restore_finance_backup', { p_backup: backup as unknown as Json });
-        if (error) throw error;
-
-        await init();
-        toast({ title: '✅ Backup restored successfully' });
+        setRestoreConfirm({
+          date: backup.date,
+          counts,
+          execute: async () => {
+            const { error } = await supabase.rpc('restore_finance_backup', { p_backup: backup as unknown as Json });
+            if (error) throw error;
+            await init();
+            toast({ title: 'Backup restored successfully' });
+          },
+        });
       } catch (err) {
         toast({ title: 'Restore failed', description: err instanceof Error ? err.message : 'Invalid file', variant: 'destructive' });
       }
       setRestoreLoading(false);
     };
     input.click();
+  }
+
+  async function executeRestore() {
+    if (!restoreConfirm) return;
+    setRestoreLoading(true);
+    try {
+      await restoreConfirm.execute();
+    } catch (err) {
+      toast({ title: 'Restore failed', description: err instanceof Error ? err.message : 'Database error', variant: 'destructive' });
+    } finally {
+      setRestoreLoading(false);
+      setRestoreConfirm(null);
+    }
   }
 
   // Wipe
@@ -321,6 +356,11 @@ export default function SettingsPage() {
   }
 
   async function handleLogout() {
+    if (isDemo) {
+      await exitDemo();
+      navigate('/login', { replace: true });
+      return;
+    }
     const { error } = await signOut();
     if (error) { toast({ title: 'Sign out failed', description: error.message, variant: 'destructive' }); return; }
     navigate('/login', { replace: true });
@@ -328,14 +368,14 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-bold">Settings</h1>
+      <PageHeader title={t('settingsTitle')} />
 
       <div className="space-y-3">
         {/* Appearance */}
-        <SettingsCard icon={Palette} title="Appearance">
+        <SettingsCard icon={Palette} title={t('themeAppearance')}>
           <div className="flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-medium">Dark Mode</p>
+              <p className="text-sm font-medium">{t('darkMode')}</p>
               <p className="text-fit text-xs text-muted-foreground">Toggle between light and dark themes</p>
             </div>
             <div className="flex items-center gap-2">
@@ -350,22 +390,24 @@ export default function SettingsPage() {
         <SettingsCard icon={User} title="Profile">
           <div className="space-y-3">
             <div>
-              <p className="text-xs text-muted-foreground">Email</p>
-              <p className="text-fit text-sm font-medium">{userEmail || '—'}</p>
+              <p className="text-xs text-muted-foreground">{isDemo ? 'Account Type' : 'Email'}</p>
+              <p className="text-fit text-sm font-medium">
+                {isDemo ? 'Demo Visitor (Temporary workspace)' : (userEmail || '—')}
+              </p>
             </div>
             <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
-              <Button size="sm" variant="outline" onClick={() => setShowPasswordModal(true)}>
+              <Button size="sm" variant="outline" onClick={handleOpenPasswordModal}>
                 <Shield className="mr-1.5 h-3.5 w-3.5" /> Change Password
               </Button>
               <Button size="sm" variant="outline" onClick={handleLogout} className="gap-1.5">
-                <LogOut className="h-3.5 w-3.5" /> Sign Out
+                <LogOut className="h-3.5 w-3.5" /> {isDemo ? 'Exit Demo' : 'Sign Out'}
               </Button>
             </div>
           </div>
         </SettingsCard>
 
         {/* Accounts */}
-        <SettingsCard icon={Landmark} title="Bank Accounts">
+        <SettingsCard icon={Landmark} title={t('manageAccounts')}>
           <div className="space-y-2">
             {accounts.map((acc) => (
               <div key={acc.id} className="flex flex-col gap-2 rounded-md bg-secondary/50 px-3 py-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
@@ -374,7 +416,7 @@ export default function SettingsPage() {
                   <p className="text-[10px] uppercase text-muted-foreground">{acc.type.replace('_', ' ')}</p>
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openAccountEdit(acc.id)}>Edit</Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openAccountEdit(acc.id)}>{t('actionEdit')}</Button>
                   {!acc.isArchived && acc.type !== 'cash' && (
                     <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => archiveAccount(acc.id)}>Archive</Button>
                   )}
@@ -385,33 +427,33 @@ export default function SettingsPage() {
               </div>
             ))}
             <Button size="sm" variant="outline" className="w-full gap-1" onClick={openAccountAdd}>
-              <Plus className="h-3.5 w-3.5" /> Add Account
+              <Plus className="h-3.5 w-3.5" /> {t('addAccount')}
             </Button>
           </div>
         </SettingsCard>
 
         {/* Academic Years */}
-        <SettingsCard icon={GraduationCap} title="Academic Years">
+        <SettingsCard icon={GraduationCap} title={t('manageAcademicYears')}>
           <div className="space-y-2">
             {academicYears.map((y) => (
               <div key={y.id} className="flex flex-col gap-2 rounded-md bg-secondary/50 px-3 py-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">AY {y.label}</p>
                   <p className="text-fit text-xs text-muted-foreground">Tuition target: {formatINR(y.targetTuitionFees)} • {y.status.replace('_', ' ')}</p>
-                  {(y.carryForwardFees || 0) > 0 && <p className="text-fit text-xs text-muted-foreground">Additional outstanding balance: {formatINR(y.carryForwardFees || 0)}</p>}
+                  {(y.carryForwardFees || 0) > 0 && <p className="text-fit text-xs text-muted-foreground">Last year's pending balance: {formatINR(y.carryForwardFees || 0)}</p>}
                   {getPendingForYear(y.id).remaining > 0 && <p className="text-fit text-xs font-medium text-warning">Current outstanding: {formatINR(getPendingForYear(y.id).remaining)}</p>}
                 </div>
-                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openYearEdit(y.id)}>Edit</Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openYearEdit(y.id)}>{t('actionEdit')}</Button>
               </div>
             ))}
             <Button size="sm" variant="outline" className="w-full gap-1" onClick={openYearAdd}>
-              <Plus className="h-3.5 w-3.5" /> Add Year
+              <Plus className="h-3.5 w-3.5" /> {t('academicYearPrefix')} {t('actionAdd')}
             </Button>
           </div>
         </SettingsCard>
 
         {/* Recurring */}
-        <SettingsCard icon={Repeat} title="Recurring Templates">
+        <SettingsCard icon={Repeat} title={t('manageRecurringExpenses')}>
           <div className="space-y-2">
             {recurringTemplates.map((t) => (
               <div key={t.id} className="flex flex-col gap-2 rounded-md bg-secondary/50 px-3 py-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
@@ -469,8 +511,14 @@ export default function SettingsPage() {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Change Password</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <Input type="password" placeholder="New password (min 8 chars)" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-            <Input type="password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            <div className="space-y-1">
+              <Label htmlFor="new-password">New Password</Label>
+              <Input id="new-password" type="password" placeholder="Min 8 characters" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="confirm-password">Confirm New Password</Label>
+              <Input id="confirm-password" type="password" placeholder="Re-enter new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            </div>
             <Button onClick={handleChangePassword} disabled={pwLoading} className="w-full">
               {pwLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Update Password
             </Button>
@@ -483,17 +531,24 @@ export default function SettingsPage() {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>{editAccountId ? 'Edit Account' : 'Add Account'}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <Input placeholder="Account name" value={accName} onChange={(e) => setAccName(e.target.value)} />
-            <Select value={accType} onValueChange={(v) => setAccType(v as typeof accType)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="school_bank">School Bank</SelectItem>
-                <SelectItem value="personal_bank">Personal Bank</SelectItem>
-                <SelectItem value="cash">Cash</SelectItem>
-              </SelectContent>
-            </Select>
-            <div>
-              <Input type="number" placeholder={editAccountId ? 'Current balance (₹)' : 'Opening balance (₹)'} value={accBalance} onChange={(e) => setAccBalance(e.target.value)} />
+            <div className="space-y-1">
+              <Label htmlFor="acc-name">Account Name</Label>
+              <Input id="acc-name" placeholder="e.g. HDFC Main, Cash Drawer" value={accName} onChange={(e) => setAccName(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="acc-type">Account Type</Label>
+              <Select value={accType} onValueChange={(v) => setAccType(v as typeof accType)}>
+                <SelectTrigger id="acc-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="school_bank">School Bank</SelectItem>
+                  <SelectItem value="personal_bank">Personal Bank</SelectItem>
+                  <SelectItem value="cash">Cash</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="acc-balance">{editAccountId ? 'Current Balance (₹)' : 'Opening Balance (₹)'}</Label>
+              <Input id="acc-balance" type="number" placeholder="0" value={accBalance} onChange={(e) => setAccBalance(e.target.value)} />
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {editAccountId ? 'Sets the current balance without changing transaction history.' : 'Amount held before recorded transactions.'}
               </p>
@@ -515,7 +570,7 @@ export default function SettingsPage() {
             <div><Label htmlFor="year-end">End Date</Label><Input id="year-end" type="date" value={yearEnd} onChange={(e) => setYearEnd(e.target.value)} /></div>
             <div><Label htmlFor="year-target">Current-Year Tuition Target (₹)</Label><Input id="year-target" type="number" placeholder="Enter target" value={yearTarget} onChange={(e) => setYearTarget(e.target.value)} /></div>
             <div>
-              <Label htmlFor="year-additional-balance">Additional Outstanding Fee Balance (₹)</Label>
+              <Label htmlFor="year-additional-balance">Last Year's Pending Fee Balance (₹)</Label>
               <Input id="year-additional-balance" type="number" placeholder="Optional" value={yearCarry} onChange={(e) => setYearCarry(e.target.value)} />
               <p className="mt-1 text-[11px] text-muted-foreground">Unpaid fees belonging to this academic year that are not already included in its tuition target. Do not enter the same balance under another year.</p>
             </div>
@@ -559,7 +614,7 @@ export default function SettingsPage() {
       <AlertDialog open={showWipeConfirm} onOpenChange={setShowWipeConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-destructive">⚠️ Wipe All Data</AlertDialogTitle>
+            <AlertDialogTitle className="text-destructive">Wipe All Data</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete ALL financial data. This cannot be undone.
               <br /><br />
@@ -580,6 +635,28 @@ export default function SettingsPage() {
               className="bg-destructive text-destructive-foreground"
             >
               {wiping && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Wipe Everything
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Restore Confirmation */}
+      <AlertDialog open={!!restoreConfirm} onOpenChange={(open) => { if (!open) setRestoreConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore Backup</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>Restore backup from <strong className="text-foreground">{restoreConfirm?.date}</strong>?</p>
+                <p className="rounded bg-muted px-3 py-2 font-mono text-xs">{restoreConfirm?.counts}</p>
+                <p className="font-medium text-destructive">This will replace ALL current data.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={restoreLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={executeRestore} disabled={restoreLoading} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {restoreLoading ? 'Restoring...' : 'Yes, Replace All Data'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

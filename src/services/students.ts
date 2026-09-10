@@ -77,3 +77,157 @@ export async function importRoster(academicYearId: string, rows: RosterImportRow
   });
   return { data: data as { added: number; updated: number; failed: number; total: number } | null, error };
 }
+
+export interface RemoveAllStudentsOptions {
+  academicYearId?: string;
+  deletePayments?: boolean;
+}
+
+export async function removeAll(options?: RemoveAllStudentsOptions): Promise<{
+  removedStudents: number;
+  removedEnrollments: number;
+  error?: unknown;
+}> {
+  const userId = await requireUserId();
+  const academicYearId = options?.academicYearId;
+  const deletePayments = Boolean(options?.deletePayments);
+
+  try {
+    if (academicYearId) {
+      // 1. Fetch enrollments for this specific academic year
+      const { data: enrollments, error: fetchErr } = await supabase
+        .from('student_enrollments')
+        .select('id, student_id')
+        .eq('user_id', userId)
+        .eq('academic_year_id', academicYearId);
+
+      if (fetchErr) throw fetchErr;
+      if (!enrollments || enrollments.length === 0) {
+        return { removedStudents: 0, removedEnrollments: 0 };
+      }
+
+      const enrollmentIds = enrollments.map((e) => e.id);
+      const studentIds = Array.from(new Set(enrollments.map((e) => e.student_id)));
+
+      // 2. Handle linked income entries in batches of 100
+      for (let i = 0; i < enrollmentIds.length; i += 100) {
+        const chunk = enrollmentIds.slice(i, i + 100);
+        if (deletePayments) {
+          const { error: delIncomeErr } = await supabase
+            .from('income_entries')
+            .delete()
+            .eq('user_id', userId)
+            .in('student_enrollment_id', chunk);
+          if (delIncomeErr) throw delIncomeErr;
+        } else {
+          const { error: unlinkIncomeErr } = await supabase
+            .from('income_entries')
+            .update({ student_enrollment_id: null })
+            .eq('user_id', userId)
+            .in('student_enrollment_id', chunk);
+          if (unlinkIncomeErr) throw unlinkIncomeErr;
+        }
+      }
+
+      // 3. Delete student enrollments for this academic year
+      const { error: delEnrollmentsErr } = await supabase
+        .from('student_enrollments')
+        .delete()
+        .eq('user_id', userId)
+        .eq('academic_year_id', academicYearId);
+
+      if (delEnrollmentsErr) throw delEnrollmentsErr;
+
+      // 4. Check if these students have any remaining enrollments in OTHER academic years
+      let removedStudentsCount = 0;
+      if (studentIds.length > 0) {
+        const { data: remaining, error: remErr } = await supabase
+          .from('student_enrollments')
+          .select('student_id')
+          .eq('user_id', userId)
+          .in('student_id', studentIds);
+
+        if (remErr) throw remErr;
+
+        const remainingStudentIds = new Set((remaining || []).map((r) => r.student_id));
+        const studentsToDelete = studentIds.filter((id) => !remainingStudentIds.has(id));
+
+        if (studentsToDelete.length > 0) {
+          for (let i = 0; i < studentsToDelete.length; i += 100) {
+            const chunk = studentsToDelete.slice(i, i + 100);
+            const { error: delStudentsErr } = await supabase
+              .from('students')
+              .delete()
+              .eq('user_id', userId)
+              .in('id', chunk);
+            if (delStudentsErr) throw delStudentsErr;
+          }
+          removedStudentsCount = studentsToDelete.length;
+        }
+      }
+
+      return {
+        removedStudents: removedStudentsCount,
+        removedEnrollments: enrollmentIds.length,
+      };
+    } else {
+      // Remove ALL students across ALL academic years
+      const [{ count: studentCount }, { count: enrollmentCount }] = await Promise.all([
+        supabase.from('students').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+        supabase.from('student_enrollments').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+      ]);
+
+      // 1. Handle linked income entries
+      if (deletePayments) {
+        const { error: delIncomeErr } = await supabase
+          .from('income_entries')
+          .delete()
+          .eq('user_id', userId)
+          .not('student_enrollment_id', 'is', null);
+        if (delIncomeErr) throw delIncomeErr;
+      } else {
+        const { error: unlinkIncomeErr } = await supabase
+          .from('income_entries')
+          .update({ student_enrollment_id: null })
+          .eq('user_id', userId)
+          .not('student_enrollment_id', 'is', null);
+        if (unlinkIncomeErr) throw unlinkIncomeErr;
+      }
+
+      // 2. Delete all student enrollments
+      const { error: delEnrollmentsErr } = await supabase
+        .from('student_enrollments')
+        .delete()
+        .eq('user_id', userId);
+      if (delEnrollmentsErr) throw delEnrollmentsErr;
+
+      // 3. Delete all students
+      const { error: delStudentsErr } = await supabase
+        .from('students')
+        .delete()
+        .eq('user_id', userId);
+      if (delStudentsErr) throw delStudentsErr;
+
+      return {
+        removedStudents: studentCount || 0,
+        removedEnrollments: enrollmentCount || 0,
+      };
+    }
+  } catch (error) {
+    return {
+      removedStudents: 0,
+      removedEnrollments: 0,
+      error,
+    };
+  }
+}
+
+export async function deleteEnrollment(enrollmentId: string) {
+  const userId = await requireUserId();
+  const { error } = await supabase
+    .from('student_enrollments')
+    .delete()
+    .eq('id', enrollmentId)
+    .eq('user_id', userId);
+  return { error };
+}

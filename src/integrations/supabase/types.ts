@@ -583,6 +583,8 @@ export type Database = {
         Args: { p_accounts: Json; p_templates?: Json; p_year: Json }
         Returns: undefined
       }
+      discard_demo_workspace: { Args: Record<string, never>; Returns: undefined }
+      ensure_demo_workspace: { Args: Record<string, never>; Returns: undefined }
       import_student_roster: {
         Args: { p_academic_year_id: string; p_rows: Json }
         Returns: Json
@@ -598,6 +600,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      reset_demo_workspace: { Args: Record<string, never>; Returns: undefined }
       restore_finance_backup: { Args: { p_backup: Json }; Returns: undefined }
       save_student_with_enrollment: {
         Args: { p_enrollment: Json; p_student: Json }

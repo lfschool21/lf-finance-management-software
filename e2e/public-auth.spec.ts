@@ -6,10 +6,12 @@ test('login screen is usable', async ({ page }) => {
   await expect(page.getByLabel('Email')).toBeVisible();
   await expect(page.getByLabel('Password')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Explore Demo' })).toBeVisible();
 });
 
 test('registration validates locally without creating a remote user', async ({ page }) => {
   await page.goto('/register');
+  await expect(page.getByRole('button', { name: 'Explore Demo' })).toBeVisible();
   await page.getByLabel('Email').fill('test@example.com');
   await page.getByLabel('Password', { exact: true }).fill('abcdefgh');
   await page.getByLabel('Confirm Password').fill('abcdefgi');

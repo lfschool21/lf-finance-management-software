@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,13 +14,13 @@ import { toast } from '@/hooks/use-toast';
 import { Loader2, X, IndianRupee, UtensilsCrossed, PlusCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
-import type { IncomeDbType, IncomeEntry } from '@/types/finance';
-import type { PaymentMethod } from '@/types/finance';
-import { TUITION_CATEGORY, LUNCH_CATEGORY, OTHER_CATEGORY } from '@/types/finance';
-import { getFeeOutstanding, isPreviousAcademicYear, parseDateOnly, parsePositiveAmount } from '@/lib/finance-domain';
+import { TUITION_CATEGORY, LUNCH_CATEGORY, OTHER_CATEGORY, type AcademicYear, type IncomeDbType, type IncomeEntry, type PaymentMethod } from '@/types/finance';
+import * as academicYearsService from '@/services/academicYears';
+import { getFeeCollected, getFeeOutstanding, isPreviousAcademicYear, parseDateOnly, parsePositiveAmount } from '@/lib/finance-domain';
 import { useStudentStore } from '@/store/student-store';
 import { getStudentFeeSummary } from '@/lib/student-fees';
 import { MEDIUM_LABELS } from '@/types/students';
+import { useTranslation } from '@/lib/i18n';
 
 type IncomeType = 'tuition' | 'lunch' | 'other';
 
@@ -39,7 +39,8 @@ function categoryToType(cat: string): IncomeType {
 }
 
 export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, presetStudentEnrollmentId }: AddIncomeModalProps) {
-  const { accounts, academicYears, incomeEntries, addIncome, updateIncome, deleteIncome, getYearForDate } = useFinanceStore();
+  const { t } = useTranslation();
+  const { accounts, academicYears, currentYearId, incomeEntries, addIncome, updateIncome, deleteIncome, getYearForDate, refreshAcademicYears } = useFinanceStore();
   const { students, enrollments } = useStudentStore();
 
   const [incomeType, setIncomeType] = useState<IncomeType>('tuition');
@@ -68,24 +69,44 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
   );
 
   const detectedYear = useMemo(() => {
-    if (!date) return undefined;
-    return getYearForDate(parseDateOnly(date));
-  }, [date, getYearForDate]);
+    if (date) {
+      const forDate = getYearForDate(parseDateOnly(date));
+      if (forDate) return forDate;
+    }
+    const targetEnrollmentId = selectedEnrollmentId || presetStudentEnrollmentId;
+    if (targetEnrollmentId) {
+      const enrollment = enrollments.find((e) => e.id === targetEnrollmentId);
+      if (enrollment) {
+        const year = academicYears.find((y) => y.id === enrollment.academicYearId);
+        if (year) return year;
+      }
+    }
+    return academicYears.find((y) => y.id === currentYearId) || academicYears.find((y) => y.status === 'active') || academicYears[0];
+  }, [date, getYearForDate, selectedEnrollmentId, presetStudentEnrollmentId, enrollments, academicYears, currentYearId]);
 
   const academicYearId = detectedYear?.id || '';
 
+  const getEffectiveYearPending = useCallback((year: AcademicYear) => {
+    const yearRemaining = getFeeOutstanding(year, incomeEntries, editEntry?.id).remaining;
+    const rosterRemaining = enrollments
+      .filter((e) => e.academicYearId === year.id && (!selectedStudentId || e.studentId === selectedStudentId))
+      .reduce((sum, e) => sum + getStudentFeeSummary(e, incomeEntries, editEntry?.id).pending, 0);
+    return Math.max(yearRemaining, rosterRemaining);
+  }, [editEntry?.id, enrollments, incomeEntries, selectedStudentId]);
+
   const pendingYears = useMemo(() => {
-    if (!detectedYear) return [];
-    return academicYears.filter((year) =>
-      isPreviousAcademicYear(year, detectedYear) &&
-      getFeeOutstanding(year, incomeEntries, editEntry?.id).remaining > 0,
-    );
-  }, [academicYears, detectedYear, editEntry?.id, incomeEntries]);
+    if (!detectedYear) return academicYears.filter((y) => y.id !== currentYearId);
+    return academicYears.filter((year) => {
+      if (year.id === originalYearId) return true;
+      if (!isPreviousAcademicYear(year, detectedYear)) return false;
+      return getEffectiveYearPending(year) > 0;
+    });
+  }, [academicYears, currentYearId, detectedYear, getEffectiveYearPending, originalYearId]);
 
   const selectedOutstanding = useMemo(() => {
     const original = academicYears.find((year) => year.id === originalYearId);
-    return original ? getFeeOutstanding(original, incomeEntries, editEntry?.id).remaining : 0;
-  }, [academicYears, editEntry?.id, incomeEntries, originalYearId]);
+    return original ? getEffectiveYearPending(original) : 0;
+  }, [academicYears, getEffectiveYearPending, originalYearId]);
 
   const selectedStudent = students.find((student) => student.id === selectedStudentId);
   const studentMatches = useMemo(() => {
@@ -94,15 +115,20 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
     return students.filter((student) => student.status === 'active' &&
       (student.fullName.toLowerCase().includes(query) || student.admissionNumber.toLowerCase().includes(query))).slice(0, 8);
   }, [studentSearch, students]);
+
   const studentObligations = useMemo(() => {
-    if (!selectedStudentId || !detectedYear) return [];
-    return enrollments.filter((enrollment) => enrollment.studentId === selectedStudentId).flatMap((enrollment) => {
-      const year = academicYears.find((candidate) => candidate.id === enrollment.academicYearId);
-      if (!year || (year.id !== detectedYear.id && !isPreviousAcademicYear(year, detectedYear))) return [];
-      const summary = getStudentFeeSummary(enrollment, incomeEntries, editEntry?.id);
-      return summary.pending > 0 ? [{ enrollment, year, summary }] : [];
-    }).sort((a, b) => b.year.startDate.getTime() - a.year.startDate.getTime());
-  }, [academicYears, detectedYear, editEntry?.id, enrollments, incomeEntries, selectedStudentId]);
+    if (!selectedStudentId) return [];
+    return enrollments
+      .filter((enrollment) => enrollment.studentId === selectedStudentId)
+      .map((enrollment) => {
+        const year = academicYears.find((candidate) => candidate.id === enrollment.academicYearId);
+        const summary = getStudentFeeSummary(enrollment, incomeEntries, editEntry?.id);
+        return { enrollment, year, summary };
+      })
+      .filter((item): item is { enrollment: typeof item.enrollment; year: NonNullable<typeof item.year>; summary: typeof item.summary } => !!item.year)
+      .sort((a, b) => b.year.startDate.getTime() - a.year.startDate.getTime());
+  }, [academicYears, editEntry?.id, enrollments, incomeEntries, selectedStudentId]);
+
   const selectedStudentObligation = studentObligations.find((item) => item.enrollment.id === selectedEnrollmentId);
 
   useEffect(() => {
@@ -124,11 +150,29 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
       } else {
         setIncomeType('tuition');
         setAmount('');
-        setDate(new Date().toISOString().split('T')[0]);
+        const presetEnrollment = enrollments.find((item) => item.id === presetStudentEnrollmentId);
+        const targetYear = presetEnrollment
+          ? academicYears.find((y) => y.id === presetEnrollment.academicYearId)
+          : (academicYears.find((y) => y.id === currentYearId) || academicYears.find((y) => y.status === 'active') || academicYears[0]);
+
+        let initialDate = new Date().toISOString().split('T')[0];
+        if (targetYear) {
+          const today = parseDateOnly(initialDate);
+          const start = targetYear.startDate instanceof Date ? targetYear.startDate : new Date(targetYear.startDate);
+          const end = targetYear.endDate instanceof Date ? targetYear.endDate : new Date(targetYear.endDate);
+          if (today < start) {
+            initialDate = targetYear.startDate instanceof Date ? targetYear.startDate.toISOString().split('T')[0] : String(targetYear.startDate);
+          } else if (today > end) {
+            const todayYear = getYearForDate(today);
+            if (!todayYear) {
+              initialDate = targetYear.endDate instanceof Date ? targetYear.endDate.toISOString().split('T')[0] : String(targetYear.endDate);
+            }
+          }
+        }
+        setDate(initialDate);
         setAccountId(activeAccounts[0]?.id || '');
         setIsLateCollection(!!presetLateYearId);
         setOriginalYearId(presetLateYearId || '');
-        const presetEnrollment = enrollments.find((item) => item.id === presetStudentEnrollmentId);
         setSelectedEnrollmentId(presetStudentEnrollmentId || '');
         setSelectedStudentId(presetEnrollment?.studentId || '');
         setPaymentMethod('cash');
@@ -140,7 +184,19 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
       setErrors({});
       setTagInput('');
     }
-  }, [isOpen, editEntry, presetLateYearId, presetStudentEnrollmentId, activeAccounts, enrollments]);
+  }, [isOpen, editEntry, presetLateYearId, presetStudentEnrollmentId, activeAccounts, enrollments, academicYears, currentYearId, getYearForDate]);
+
+  // Automatically select an enrollment when student is set or obligations become available
+  useEffect(() => {
+    if (selectedStudentId && (!selectedEnrollmentId || !studentObligations.some(o => o.enrollment.id === selectedEnrollmentId))) {
+      if (studentObligations.length > 0) {
+        const match = (presetStudentEnrollmentId && studentObligations.find(o => o.enrollment.id === presetStudentEnrollmentId))
+          || (academicYearId && studentObligations.find(o => o.year.id === academicYearId))
+          || studentObligations[0];
+        if (match) setSelectedEnrollmentId(match.enrollment.id);
+      }
+    }
+  }, [selectedStudentId, selectedEnrollmentId, studentObligations, presetStudentEnrollmentId, academicYearId]);
 
   useEffect(() => {
     if (!selectedEnrollmentId || !detectedYear) return;
@@ -151,17 +207,16 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
     setOriginalYearId(late ? enrollment.academicYearId : '');
   }, [detectedYear, enrollments, selectedEnrollmentId]);
 
-  useEffect(() => {
-    if (!accountId || incomeType !== 'tuition') return;
-    const selected = accounts.find((account) => account.id === accountId);
-    if (paymentMethod === 'cash' && selected?.type !== 'cash') {
+  function handlePaymentMethodChange(method: PaymentMethod) {
+    setPaymentMethod(method);
+    if (method === 'cash') {
       const cash = activeAccounts.find((account) => account.type === 'cash');
       if (cash) setAccountId(cash.id);
-    } else if (paymentMethod === 'upi' && selected?.type === 'cash') {
+    } else if (method === 'upi') {
       const bank = activeAccounts.find((account) => account.type !== 'cash');
       if (bank) setAccountId(bank.id);
     }
-  }, [accountId, accounts, activeAccounts, incomeType, paymentMethod]);
+  }
 
   /** Returns the DB enum value for the selected income type */
   function resolvedCategory(): IncomeDbType {
@@ -174,17 +229,36 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
     if (amt === null) errs.amount = 'Enter a finite amount greater than zero';
     if (!date) errs.date = 'Date is required';
     if (!accountId) errs.accountId = 'Select an account';
-    if (incomeType === 'tuition' && selectedStudentId && !selectedEnrollmentId) errs.studentEnrollmentId = 'Select which fee balance this payment applies to';
-    if (selectedEnrollmentId && !selectedStudentObligation) errs.studentEnrollmentId = 'Select an outstanding fee balance';
-    if (selectedStudentObligation && amt !== null && amt > selectedStudentObligation.summary.pending) {
-      errs.amount = `Amount cannot exceed this student's remaining ${formatINR(selectedStudentObligation.summary.pending)}`;
+    if (incomeType === 'tuition' && selectedStudentId && !selectedEnrollmentId) {
+      errs.studentEnrollmentId = 'Select which fee balance this payment applies to';
+    }
+    if (selectedEnrollmentId && !selectedStudentObligation) {
+      errs.studentEnrollmentId = 'Select an outstanding fee balance';
+    }
+    if (selectedStudentObligation) {
+      if (selectedStudentObligation.summary.pending <= 0) {
+        errs.amount = 'This student has no outstanding fee balance';
+      } else if (amt !== null && amt > selectedStudentObligation.summary.pending) {
+        errs.amount = `Amount cannot exceed this student's remaining ${formatINR(selectedStudentObligation.summary.pending)}`;
+      }
     }
     if (isLateCollection && !originalYearId) errs.originalYearId = 'Select the original year';
-    if (!academicYearId) errs.year = 'No academic year found for this date';
+    if (!academicYearId) {
+      errs.year = 'No academic year found for this date';
+    } else if (detectedYear && date) {
+      const d = parseDateOnly(date);
+      const s = detectedYear.startDate instanceof Date ? detectedYear.startDate : new Date(detectedYear.startDate);
+      const e = detectedYear.endDate instanceof Date ? detectedYear.endDate : new Date(detectedYear.endDate);
+      if (d < s || d > e) {
+        const sStr = detectedYear.startDate instanceof Date ? detectedYear.startDate.toISOString().split('T')[0] : String(detectedYear.startDate);
+        const eStr = detectedYear.endDate instanceof Date ? detectedYear.endDate.toISOString().split('T')[0] : String(detectedYear.endDate);
+        errs.date = `Date must fall within academic year ${detectedYear.label} (${sStr} to ${eStr})`;
+      }
+    }
     if (isLateCollection && originalYearId && !pendingYears.some((year) => year.id === originalYearId)) {
       errs.originalYearId = 'Select a preceding year with an outstanding balance';
     }
-    if (isLateCollection && amt !== null && amt > selectedOutstanding) {
+    if (isLateCollection && !selectedStudentObligation && amt !== null && selectedOutstanding > 0 && amt > selectedOutstanding) {
       errs.amount = `Amount cannot exceed the remaining ${formatINR(selectedOutstanding)}`;
     }
     setErrors(errs);
@@ -201,6 +275,28 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
     if (!validate()) return;
     setSaving(true);
     try {
+      // Auto-sync academic year target_tuition_fees if it is 0 or less than needed
+      if (incomeType === 'tuition') {
+        const targetObligationYearId = (isLateCollection && originalYearId) ? originalYearId : academicYearId;
+        const oblYear = academicYears.find((y) => y.id === targetObligationYearId);
+        if (oblYear) {
+          const amtVal = parsePositiveAmount(amount) || 0;
+          const currentPaid = getFeeCollected(incomeEntries, oblYear.id, editEntry?.id);
+          const studentTotal = enrollments
+            .filter((e) => e.academicYearId === targetObligationYearId)
+            .reduce((sum, e) => sum + (e.annualFeeAmount || 0) + (e.additionalOutstandingAmount || 0), 0);
+          const needed = Math.max(studentTotal, currentPaid + amtVal);
+          if (oblYear.targetTuitionFees < needed) {
+            try {
+              await academicYearsService.update(oblYear.id, { target_tuition_fees: needed });
+              await refreshAcademicYears();
+            } catch (syncErr) {
+              console.warn('Could not auto-sync academic year target fees:', syncErr);
+            }
+          }
+        }
+      }
+
       const payload = {
         type: resolvedCategory(),
         amount: parsePositiveAmount(amount)!,
@@ -218,10 +314,10 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
 
       if (isEdit && editEntry) {
         await updateIncome(editEntry.id, payload);
-        toast({ title: '✅ Income updated' });
+        toast({ title: 'Income updated' });
       } else {
         await addIncome(payload);
-        toast({ title: '✅ Income recorded' });
+        toast({ title: 'Income recorded' });
       }
       onClose();
     } catch (err) {
@@ -251,7 +347,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
       <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{isEdit ? 'Edit Income' : 'Add Income'}</DialogTitle>
+            <DialogTitle>{isEdit ? 'Edit Income' : t('addIncome')}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -300,7 +396,22 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
                   <div className="rounded-md border border-warning/30 bg-warning/5 p-2 text-xs text-muted-foreground"><strong className="text-foreground">Record without student:</strong> this updates school finances but will not reduce an individual student's balance.</div>
                 </> : <>
                   <div className="rounded-md bg-card p-2"><p className="font-medium">{selectedStudent.fullName}</p><p className="text-xs text-muted-foreground">{selectedStudent.admissionNumber || 'No admission number'}</p></div>
-                  <div><Label>Apply To</Label><Select value={selectedEnrollmentId} onValueChange={setSelectedEnrollmentId}><SelectTrigger><SelectValue placeholder="Select fee balance" /></SelectTrigger><SelectContent>{studentObligations.map(({ enrollment, year, summary }) => <SelectItem key={enrollment.id} value={enrollment.id}>{year.id === academicYearId ? 'Current-Year Fee' : `AY ${year.label} Previous-Year Fee`} — {formatINR(summary.pending)}</SelectItem>)}</SelectContent></Select>{errors.studentEnrollmentId && <p className="mt-1 text-xs text-destructive">{errors.studentEnrollmentId}</p>}</div>
+                  <div>
+                    <Label>Apply To</Label>
+                    <Select value={selectedEnrollmentId} onValueChange={setSelectedEnrollmentId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select fee balance" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {studentObligations.map(({ enrollment, year, summary }) => (
+                          <SelectItem key={enrollment.id} value={enrollment.id}>
+                            {year.id === academicYearId ? 'Current-Year Fee' : `AY ${year.label} Previous-Year Fee`} ({enrollment.className} · {MEDIUM_LABELS[enrollment.medium]}) — {summary.pending > 0 ? `${formatINR(summary.pending)} pending` : summary.obligation > 0 ? 'Fully Paid' : 'Fee: ₹0'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.studentEnrollmentId && <p className="mt-1 text-xs text-destructive">{errors.studentEnrollmentId}</p>}
+                  </div>
                   {selectedStudentObligation && <div className="grid grid-cols-2 gap-2 rounded-md bg-primary/5 p-2 text-xs"><span>{selectedStudentObligation.enrollment.className} · {MEDIUM_LABELS[selectedStudentObligation.enrollment.medium]}</span><span className="text-right font-mono font-semibold">{formatINR(selectedStudentObligation.summary.pending)} pending</span></div>}
                 </>}
               </div>
@@ -334,21 +445,46 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
               {errors.year && <p className="mt-1 text-xs text-destructive">{errors.year}</p>}
             </div>
 
-            {/* Account */}
-            {incomeType === 'tuition' && <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2"><div><Label>Payment Method</Label><Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="bank_transfer">Bank Transfer</SelectItem><SelectItem value="cheque">Cheque</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div><div><Label htmlFor="payment-reference">Reference (optional)</Label><Input id="payment-reference" maxLength={200} value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="UPI / cheque / receipt" /></div></div>}
-
-            <div>
-              <Label>Received In</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
-                <SelectContent>
-                  {activeAccounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}{a.isArchived ? ' (Archived)' : ''}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.accountId && <p className="mt-1 text-xs text-destructive">{errors.accountId}</p>}
-            </div>
+            {/* Payment Method & Received In Account */}
+            {incomeType === 'tuition' ? (
+              <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2">
+                <div>
+                  <Label>Payment Method</Label>
+                  <Select value={paymentMethod} onValueChange={(value) => handlePaymentMethodChange(value as PaymentMethod)}>
+                    <SelectTrigger><SelectValue placeholder="Payment method" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Received In</Label>
+                  <Select value={accountId} onValueChange={setAccountId}>
+                    <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                    <SelectContent>
+                      {activeAccounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>{a.name}{a.isArchived ? ' (Archived)' : ''}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.accountId && <p className="mt-1 text-xs text-destructive">{errors.accountId}</p>}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <Label>Received In</Label>
+                <Select value={accountId} onValueChange={setAccountId}>
+                  <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                  <SelectContent>
+                    {activeAccounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}{a.isArchived ? ' (Archived)' : ''}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.accountId && <p className="mt-1 text-xs text-destructive">{errors.accountId}</p>}
+              </div>
+            )}
 
             {/* Previous-year payment — only for Tuition Fees */}
             {incomeType === 'tuition' && !selectedEnrollmentId && (
@@ -388,7 +524,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
                       <SelectContent>
                         {pendingYears.map((y) => (
                           <SelectItem key={y.id} value={y.id}>
-                            AY {y.label} — {formatINR(getFeeOutstanding(y, incomeEntries, editEntry?.id).remaining)} pending
+                            AY {y.label} — {formatINR(getEffectiveYearPending(y))} pending
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -439,14 +575,14 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
             <div className="grid grid-cols-2 gap-2 pt-2 sm:flex sm:items-center">
               {isEdit && (
                 <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)} disabled={saving} className="col-span-2 sm:col-span-1">
-                  Delete
+                  {t('actionDelete')}
                 </Button>
               )}
               <div className="hidden flex-1 sm:block" />
-              <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+              <Button variant="outline" onClick={onClose} disabled={saving}>{t('actionCancel')}</Button>
               <Button onClick={handleSave} disabled={saving} className="gap-1.5 bg-income text-income-foreground hover:bg-income/90">
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                {isEdit ? 'Update' : 'Save'}
+                {isEdit ? 'Update' : t('actionSave')}
               </Button>
             </div>
           </div>

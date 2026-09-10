@@ -24,6 +24,24 @@ describe('student roster import', () => {
 
   it('suggests mapping and normalizes English/Gujarati aliases', () => {
     expect(suggestMapping(['Student Full Name','Standard','Language','Annual Fee'])).toEqual({0:'student_name',1:'class_name',2:'medium',3:'total_fee'});
+    const templateHeaders = [
+      'Admission Number', 'Student Name', 'Class', 'Medium', 'Current-Year Total Fee',
+      'Current-Year Collected', 'Current-Year Cash Collected', 'Current-Year UPI Collected',
+      'Current-Year Remaining', 'Additional Outstanding', 'Previous-Year Fee Academic Year',
+      'Previous-Year Class', 'Previous-Year Medium', 'Previous-Year Total Fee',
+      'Previous-Year Collected', 'Previous-Year Cash Collected', 'Previous-Year UPI Collected',
+      'Previous-Year Remaining', 'Notes',
+    ];
+    const suggested = suggestMapping(templateHeaders);
+    expect(suggested[2]).toBe('class_name');
+    expect(suggested[11]).toBe('previous_class_name');
+    expect(suggested[3]).toBe('medium');
+    expect(suggested[12]).toBe('previous_medium');
+    const mappedValues = Object.values(suggested);
+    const duplicates = mappedValues.filter((val, idx) => val !== 'ignore' && mappedValues.indexOf(val) !== idx);
+    expect(duplicates).toEqual([]);
+    expect(suggestMapping(["Last Year's Pending Fees"])).toEqual({ 0: 'additional_outstanding' });
+    expect(suggestMapping(['Additional Outstanding'])).toEqual({ 0: 'additional_outstanding' });
     const result = validateImportRows([['1',' A  Patel ','Class 5','ENG',30000,20000,8000,12000,10000]], mapping, [], [], 'y2', years, '2026-08-22')[0];
     expect(result).toMatchObject({ fullName:'A Patel', medium:'english', annualFeeAmount:30000, openingCollectedCash:8000, openingCollectedUpi:12000, openingCollectedOther:0, action:'new' });
   });
@@ -53,5 +71,21 @@ describe('student roster import', () => {
     const oldMap: ColumnMapping = {...mapping,9:'previous_year',10:'previous_class_name',11:'previous_medium',12:'previous_total_fee',13:'previous_remaining'};
     const good = validateImportRows([['1','A','5','E',30000,0,0,0,30000,'2025-26','4','Guj',12000,4000]], oldMap, [], [], 'y2', years, '2026-08-22')[0];
     expect(good).toMatchObject({ previousAcademicYearId:'y1', previousClassName:'4', previousMedium:'gujarati', previousOpeningCollectedOther:8000, errors:[] });
+  });
+
+  it('allows flexible import with blank fee, blank medium, and informational previous class data without errors', () => {
+    const flexMap: ColumnMapping = {
+      0: 'admission_number', 1: 'student_name', 2: 'class_name', 3: 'medium',
+      4: 'total_fee', 10: 'previous_year', 11: 'previous_class_name',
+    };
+    // No fee specified (blank), no medium specified (blank), previous year and class noted without fees
+    const rows = [['', 'Manavbhai', 'Class 3', '', '', '2025-26', 'Class 2']];
+    const result = validateImportRows(rows, flexMap, [], [], 'y2', years, '2026-08-22')[0];
+    expect(result.errors).toHaveLength(0);
+    expect(result.medium).toBe('english');
+    expect(result.annualFeeAmount).toBe(0);
+    expect(result.previousAcademicYearId).toBeUndefined();
+    expect(result.warnings).toContain('Medium not specified in row; defaulted to English (can be edited later)');
+    expect(result.warnings).toContain('Annual fee was not specified; defaulted to ₹0 (can be edited later)');
   });
 });

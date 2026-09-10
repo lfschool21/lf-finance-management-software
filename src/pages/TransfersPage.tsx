@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
-import { ArrowLeftRight, Plus, ArrowRight } from 'lucide-react';
+import { ArrowLeftRight, Plus, ArrowRight, Landmark, Banknote, Wallet } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 import { useFinanceStore } from '@/store/finance-store';
+import { useTranslation } from '@/lib/i18n';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -8,13 +10,14 @@ import { TransferModal } from '@/components/TransferModal';
 import type { Transfer } from '@/types/finance';
 import { Link } from 'react-router-dom';
 
-const ACCOUNT_TYPE_ICON: Record<string, string> = {
-  school_bank: '🏫',
-  personal_bank: '👤',
-  cash: '💵',
+const ACCOUNT_TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  school_bank: Landmark,
+  personal_bank: Banknote,
+  cash: Wallet,
 };
 
 export default function TransfersPage() {
+  const { t } = useTranslation();
   const { accounts, transfers, incomeEntries, expenseEntries, recoverables, recoverableRepayments, getAccountBalance } = useFinanceStore();
   const [showModal, setShowModal] = useState(false);
   const [editEntry, setEditEntry] = useState<Transfer | undefined>();
@@ -42,20 +45,23 @@ export default function TransfersPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">Transfers & Accounts</h1>
-        <Button className="w-full gap-1.5 sm:w-auto" onClick={openAdd}>
-          <Plus className="h-4 w-4" />
-          Transfer Money
-        </Button>
-      </div>
+      <PageHeader
+        title={t('transfersAndAccounts')}
+        subtitle={t('transfersSubtitle')}
+        action={
+          <Button className="w-full gap-1.5 sm:w-auto" onClick={openAdd}>
+            <Plus className="h-4 w-4" />
+            {t('transferMoney')}
+          </Button>
+        }
+      />
 
       <div className="grid gap-3 min-[420px]:grid-cols-2 lg:grid-cols-3">
-        <div className="col-span-full flex items-center justify-between"><h2 className="text-sm font-semibold">Active Account Balances</h2><Link className="text-xs text-primary hover:underline" to="/balances">View full balance reconciliation →</Link></div>
+        <div className="col-span-full flex items-center justify-between"><h2 className="text-sm font-semibold">{t('activeAccountBalances')}</h2><Link className="text-xs text-primary hover:underline" to="/balances">{t('viewFullReconciliation')}</Link></div>
         {accountBalances.map((acc) => (
           <div key={acc.id} className="rounded-lg border bg-card p-4">
             <div className="flex items-center gap-2">
-              <span className="text-lg">{ACCOUNT_TYPE_ICON[acc.type]}</span>
+              <span className="text-lg">{(() => { const Icon = ACCOUNT_TYPE_ICON[acc.type] || Wallet; return <Icon className="h-5 w-5 text-primary" />; })()}</span>
               <div>
                 <p className="text-fit text-sm font-semibold">{acc.name}</p>
                 <p className="text-[10px] uppercase text-muted-foreground">
@@ -71,11 +77,11 @@ export default function TransfersPage() {
       </div>
 
       <div>
-        <h3 className="mb-3 text-sm font-semibold">Transfer History</h3>
+        <h3 className="mb-3 text-sm font-semibold">{t('transferHistory')}</h3>
         {sortedTransfers.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-card py-12">
             <ArrowLeftRight className="mb-3 h-10 w-10 text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">No transfers yet.</p>
+            <p className="text-sm text-muted-foreground">{t('noTransfersYet')}</p>
           </div>
         ) : (
           <div className="divide-y rounded-lg border bg-card">

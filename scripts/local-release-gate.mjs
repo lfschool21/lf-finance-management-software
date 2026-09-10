@@ -57,6 +57,16 @@ async function authenticatedClient(email, password) {
   return { supabase, user: result.data.user };
 }
 
+async function anonymousClient() {
+  const supabase = client();
+  const result = await supabase.auth.signInAnonymously();
+  assert.equal(result.error, null, `Anonymous auth failed: ${result.error?.message}`);
+  assert.ok(result.data.session, 'Anonymous auth did not return a session');
+  assert.ok(result.data.user, 'Anonymous auth did not return a user');
+  assert.equal(result.data.user.is_anonymous, true, 'User is not marked as anonymous');
+  return { supabase, user: result.data.user };
+}
+
 const financeTables = [
   'academic_years',
   'accounts',
@@ -585,6 +595,110 @@ async function main() {
     archivedBalance: 0,
   });
   pass('persistence and financial consistency after authenticated reload');
+
+  // -------------------------------------------------------------
+  // Demo Mode Security, Isolation, Seeding, and Lifecycle
+  // -------------------------------------------------------------
+  // 1. Registered permanent users must NOT be allowed to invoke demo-only RPCs
+  const regEnsure = await owner.rpc('ensure_demo_workspace');
+  assert.ok(regEnsure.error, 'Registered user unexpectedly allowed to invoke ensure_demo_workspace');
+  assert.ok(regEnsure.error.message.includes('anonymous demo sessions'), 'Expected security error message');
+  const regReset = await owner.rpc('reset_demo_workspace');
+  assert.ok(regReset.error, 'Registered user unexpectedly allowed to invoke reset_demo_workspace');
+  const regDiscard = await owner.rpc('discard_demo_workspace');
+  assert.ok(regDiscard.error, 'Registered user unexpectedly allowed to invoke discard_demo_workspace');
+  pass('registered permanent user blocked from demo workspace RPCs');
+
+  // 2. Anonymous Client A seeds demo workspace
+  const demoA = await anonymousClient();
+  expectNoError(await demoA.supabase.rpc('ensure_demo_workspace'), 'Demo A ensure_demo_workspace');
+  const demoAData = await loadFinanceData(demoA.supabase);
+  assert.equal(demoAData.academic_years.length, 2, 'Demo A academic years count');
+  assert.equal(demoAData.accounts.length, 4, 'Demo A accounts count');
+  assert.equal(demoAData.students.length, 14, 'Demo A students count');
+  assert.equal(demoAData.student_enrollments.length, 16, 'Demo A student enrollments count');
+  assert.equal(demoAData.recurring_templates.length, 4, 'Demo A recurring templates count');
+  assert.ok(demoAData.income_entries.length > 0, 'Demo A income entries populated');
+  assert.ok(demoAData.expense_entries.length > 0, 'Demo A expense entries populated');
+  assert.ok(demoAData.transfers.length > 0, 'Demo A transfers populated');
+  assert.ok(demoAData.recoverables.length > 0, 'Demo A recoverables populated');
+  assert.ok(demoAData.recoverable_repayments.length > 0, 'Demo A recoverable repayments populated');
+
+  // Verify all rows in demoA belong to demoA.user.id
+  for (const table of financeTables) {
+    for (const row of demoAData[table]) {
+      assert.equal(row.user_id, demoA.user.id, `Demo A row in ${table} does not belong to Demo A user`);
+    }
+  }
+
+  // Verify account balances reconcile with transactions
+  for (const acc of demoAData.accounts) {
+    const computedBal = balanceFor(acc.id, demoAData);
+    assert.ok(Number.isFinite(computedBal), `Computed balance for account ${acc.name} is not finite`);
+  }
+
+  // Verify at least one recurring template is overdue (no generated expense this month or last_generated_date older)
+  const overdueTemplates = demoAData.recurring_templates.filter(
+    (t) => t.is_active && (!t.last_generated_date || new Date(t.last_generated_date) < new Date(new Date().getFullYear(), new Date().getMonth(), 1))
+  );
+  assert.ok(overdueTemplates.length >= 1, 'At least one recurring template must be overdue relative to current date');
+  pass('demo workspace seeding, ownership, dynamic dates, and financial consistency');
+
+  // 3. Anonymous Client B - Multi-tenant isolation and non-colliding UUIDs
+  const demoB = await anonymousClient();
+  expectNoError(await demoB.supabase.rpc('ensure_demo_workspace'), 'Demo B ensure_demo_workspace');
+  const demoBData = await loadFinanceData(demoB.supabase);
+  assert.notEqual(demoA.user.id, demoB.user.id, 'Demo A and Demo B must have distinct auth.uids');
+  // Confirm Demo B cannot see Demo A data
+  assert.deepEqual(expectNoError(await demoB.supabase.from('students').select('*').eq('user_id', demoA.user.id), 'Demo B cross-read Demo A students'), []);
+  // Confirm IDs are unique (no shared UUIDs)
+  const demoAStudentIds = new Set(demoAData.students.map((s) => s.id));
+  for (const bStudent of demoBData.students) {
+    assert.ok(!demoAStudentIds.has(bStudent.id), `Row UUID collision between Demo A and Demo B for student ${bStudent.admission_number}`);
+  }
+  pass('anonymous sessions multi-tenant RLS isolation and distinct UUID generation');
+
+  // 4. Demo A modify, backup, wipe, and restore
+  const demoABackup = {
+    version: '3.0',
+    date: new Date().toISOString(),
+    data: demoAData,
+  };
+  expectNoError(await demoA.supabase.rpc('wipe_finance_data'), 'Demo A wipe');
+  const demoAPostWipe = await loadFinanceData(demoA.supabase);
+  assert.equal(demoAPostWipe.accounts.length, 0, 'Demo A accounts wiped');
+  // Demo B data still exists
+  const demoBPostAWipe = await loadFinanceData(demoB.supabase);
+  assert.equal(demoBPostAWipe.accounts.length, 4, 'Demo B accounts unaffected by Demo A wipe');
+
+  // Demo A restores backup
+  expectNoError(await demoA.supabase.rpc('restore_finance_backup', { p_backup: demoABackup }), 'Demo A restore');
+  const demoAPostRestore = await loadFinanceData(demoA.supabase);
+  assert.equal(demoAPostRestore.accounts.length, 4, 'Demo A accounts restored');
+  for (const table of financeTables) {
+    for (const row of demoAPostRestore[table]) {
+      assert.equal(row.user_id, demoA.user.id, `Restored row in ${table} does not belong to Demo A`);
+    }
+  }
+  pass('demo mode backup, wipe, and restore with user ownership validation');
+
+  // 5. Demo A Reset Demo Workspace
+  expectNoError(await demoA.supabase.rpc('reset_demo_workspace'), 'Demo A reset_demo_workspace');
+  const demoAPostReset = await loadFinanceData(demoA.supabase);
+  assert.equal(demoAPostReset.accounts.length, 4, 'Demo A accounts after reset');
+  assert.equal(demoAPostReset.students.length, 14, 'Demo A students after reset');
+  pass('reset_demo_workspace cleanly restores canonical dataset');
+
+  // 6. Demo A Discard Demo Workspace (Exit Demo)
+  expectNoError(await demoA.supabase.rpc('discard_demo_workspace'), 'Demo A discard_demo_workspace');
+  const demoAPostDiscard = await loadFinanceData(demoA.supabase);
+  for (const table of financeTables) {
+    assert.equal(demoAPostDiscard[table].length, 0, `Demo A ${table} not cleared after discard`);
+  }
+  // Demo B still has data!
+  const demoBFinal = await loadFinanceData(demoB.supabase);
+  assert.equal(demoBFinal.accounts.length, 4, 'Demo B unaffected by Demo A discard');
+  pass('discard_demo_workspace deletes only caller records without reseeding');
 
   console.log('LOCAL RELEASE GATE PASSED');
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   BarChart3,
   TrendingUp,
@@ -6,6 +6,7 @@ import {
   Download,
   FileText,
 } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 import {
   BarChart,
   Bar,
@@ -20,6 +21,7 @@ import {
   Cell,
 } from 'recharts';
 import { useFinanceStore } from '@/store/finance-store';
+import { useTranslation } from '@/lib/i18n';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -37,6 +39,7 @@ const COLORS = [
 ];
 
 export default function ReportsPage() {
+  const { t } = useTranslation();
   const {
     incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments, accounts, academicYears, currentYearId,
     getYearProfitBreakdown, getAllTimeCumulativeProfit, getPendingForYear,
@@ -50,10 +53,46 @@ export default function ReportsPage() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
+  const [reportTab, setReportTab] = useState('monthly');
 
-  const selectedYear = academicYears.find((y) => y.id === selectedYearId);
-  const breakdown = useMemo(() => getYearProfitBreakdown(selectedYearId), [selectedYearId, getYearProfitBreakdown, incomeEntries, expenseEntries]);
-  const yearlyIncomeBreakdown = useMemo(() => getIncomeBreakdown(incomeEntries.filter((entry) => entry.academicYearId === selectedYearId)), [incomeEntries, selectedYearId]);
+  const effectiveYearId = (selectedYearId && academicYears.some((y) => y.id === selectedYearId))
+    ? selectedYearId
+    : currentYearId;
+
+  useEffect(() => {
+    if (!selectedYearId && currentYearId) {
+      setSelectedYearId(currentYearId);
+    }
+  }, [currentYearId, selectedYearId]);
+
+  useEffect(() => {
+    if (!compareYear1 && currentYearId) {
+      setCompareYear1(currentYearId);
+    }
+    if (!compareYear2 && academicYears.length > 1) {
+      const other = academicYears.find((y) => y.id !== (compareYear1 || currentYearId));
+      if (other) setCompareYear2(other.id);
+    }
+  }, [currentYearId, academicYears, compareYear1, compareYear2]);
+
+  useEffect(() => {
+    const allDates = [
+      ...incomeEntries.map((e) => e.date),
+      ...expenseEntries.map((e) => e.date),
+    ];
+    if (allDates.length > 0) {
+      const latest = new Date(Math.max(...allDates.map((d) => d.getTime())));
+      const latestKey = `${latest.getFullYear()}-${String(latest.getMonth() + 1).padStart(2, '0')}`;
+      const hasTxInSelectedMonth = allDates.some((d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === selectedMonth);
+      if (!hasTxInSelectedMonth) {
+        setSelectedMonth(latestKey);
+      }
+    }
+  }, [incomeEntries, expenseEntries, selectedMonth]);
+
+  const selectedYear = academicYears.find((y) => y.id === effectiveYearId);
+  const breakdown = useMemo(() => getYearProfitBreakdown(effectiveYearId), [effectiveYearId, getYearProfitBreakdown, incomeEntries, expenseEntries]);
+  const yearlyIncomeBreakdown = useMemo(() => getIncomeBreakdown(incomeEntries.filter((entry) => entry.academicYearId === effectiveYearId)), [incomeEntries, effectiveYearId]);
   const selectedYearIsComplete = selectedYear ? dateKey(selectedYear.endDate) < dateKey(new Date()) : false;
   const feeStatusAtCutoff = useMemo(
     () => selectedYear ? getFeeOutstandingAsOf(selectedYear, incomeEntries, selectedYearIsComplete ? selectedYear.endDate : new Date()) : null,
@@ -64,13 +103,13 @@ export default function ReportsPage() {
     [getPendingForYear, incomeEntries, selectedYear],
   );
   const studentReport = useMemo(() => {
-    const roster = enrollments.filter((item) => item.academicYearId === selectedYearId && item.status === 'active');
+    const roster = enrollments.filter((item) => item.academicYearId === effectiveYearId && item.status === 'active');
     const rows = roster.map((enrollment) => {
       const student = students.find((item) => item.id === enrollment.studentId)!;
       const fees = getStudentFeeSummary(enrollment, incomeEntries);
-      return { student, enrollment, fees, previousPending: getStudentPreviousPending(enrollment.studentId, selectedYearId, enrollments, incomeEntries) };
+      return { student, enrollment, fees, previousPending: getStudentPreviousPending(enrollment.studentId, effectiveYearId, enrollments, incomeEntries) };
     }).filter((item) => item.student).sort((a,b) => b.fees.pending + b.previousPending - a.fees.pending - a.previousPending);
-    const actualPayments = incomeEntries.filter((entry) => entry.academicYearId === selectedYearId && entry.studentEnrollmentId);
+    const actualPayments = incomeEntries.filter((entry) => entry.academicYearId === effectiveYearId && entry.studentEnrollmentId);
     return { rows, summary: summarizeRoster(roster, incomeEntries), classes: groupRosterByClass(roster, incomeEntries),
       english: summarizeRoster(roster.filter((item) => item.medium === 'english'), incomeEntries),
       gujarati: summarizeRoster(roster.filter((item) => item.medium === 'gujarati'), incomeEntries),
@@ -80,7 +119,7 @@ export default function ReportsPage() {
       otherActual: actualPayments.filter((entry) => entry.paymentMethod && !['cash','upi'].includes(entry.paymentMethod)).reduce((sum, entry) => sum + entry.amount, 0),
       unknownActual: actualPayments.filter((entry) => !entry.paymentMethod).reduce((sum, entry) => sum + entry.amount, 0),
       previousPending: rows.reduce((sum, row) => sum + row.previousPending, 0) };
-  }, [enrollments, incomeEntries, selectedYearId, students]);
+  }, [enrollments, incomeEntries, effectiveYearId, students]);
 
   function exportStudentFeesCsv() {
     const headers = ['Student Name','Admission Number','Class','Medium','Current Fee','Current Collected','Current Pending','Previous-Year Pending','Cash','UPI','Total Pending'];
@@ -93,28 +132,28 @@ export default function ReportsPage() {
   const schoolCategoryBreakdown = useMemo(() => {
     const map = new Map<string, number>();
     expenseEntries
-      .filter((e) => e.academicYearId === selectedYearId && e.expenseType === 'school')
+      .filter((e) => e.academicYearId === effectiveYearId && e.expenseType === 'school')
       .forEach((e) => map.set(e.category, (map.get(e.category) || 0) + e.amount));
     return Array.from(map.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [expenseEntries, selectedYearId]);
+  }, [expenseEntries, effectiveYearId]);
 
   const homeCategoryBreakdown = useMemo(() => {
     const map = new Map<string, number>();
     expenseEntries
-      .filter((e) => e.academicYearId === selectedYearId && e.expenseType === 'home')
+      .filter((e) => e.academicYearId === effectiveYearId && e.expenseType === 'home')
       .forEach((e) => map.set(e.category, (map.get(e.category) || 0) + e.amount));
     return Array.from(map.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [expenseEntries, selectedYearId]);
+  }, [expenseEntries, effectiveYearId]);
 
   // All categories combined for analytics
   const allCategoryBreakdown = useMemo(() => {
     const map = new Map<string, { value: number; type: string }>();
     expenseEntries
-      .filter((e) => e.academicYearId === selectedYearId)
+      .filter((e) => e.academicYearId === effectiveYearId)
       .forEach((e) => {
         const existing = map.get(e.category);
         map.set(e.category, {
@@ -125,7 +164,7 @@ export default function ReportsPage() {
     return Array.from(map.entries())
       .map(([name, { value, type }]) => ({ name, value, type }))
       .sort((a, b) => b.value - a.value);
-  }, [expenseEntries, selectedYearId]);
+  }, [expenseEntries, effectiveYearId]);
 
   // Monthly Summary
   const monthlySummary = useMemo(() => {
@@ -212,7 +251,7 @@ export default function ReportsPage() {
 
   // Expense Analytics
   const expenseAnalytics = useMemo(() => {
-    const yearExpenses = expenseEntries.filter((e) => e.academicYearId === selectedYearId);
+    const yearExpenses = expenseEntries.filter((e) => e.academicYearId === effectiveYearId);
     const school = yearExpenses.filter((e) => e.expenseType === 'school').reduce((s, e) => s + e.amount, 0);
     const home = yearExpenses.filter((e) => e.expenseType === 'home').reduce((s, e) => s + e.amount, 0);
 
@@ -232,14 +271,14 @@ export default function ReportsPage() {
     const average = monthlyAmounts.length > 0 ? monthlyAmounts.reduce((s, v) => s + v, 0) / monthlyAmounts.length : 0;
 
     return { school, home, total: school + home, monthlyTrend, highest, lowest, average };
-  }, [expenseEntries, selectedYearId]);
+  }, [expenseEntries, effectiveYearId]);
 
   // Home expenses for P&L
   const homeExpensesTotal = useMemo(() => {
     return expenseEntries
-      .filter((e) => e.academicYearId === selectedYearId && e.expenseType === 'home')
+      .filter((e) => e.academicYearId === effectiveYearId && e.expenseType === 'home')
       .reduce((s, e) => s + e.amount, 0);
-  }, [expenseEntries, selectedYearId]);
+  }, [expenseEntries, effectiveYearId]);
 
   const handleExportCSV = useCallback(() => {
     const accountName = (id: string) => accounts.find((account) => account.id === id)?.name || 'Unknown Account';
@@ -265,7 +304,7 @@ export default function ReportsPage() {
     a.download = `little-flowers-transactions-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast({ title: '📊 CSV exported' });
+    toast({ title: 'CSV exported' });
   }, [accounts, academicYears, incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments]);
 
   const handleExportPDF = useCallback(async () => {
@@ -301,7 +340,7 @@ export default function ReportsPage() {
       });
 
       doc.save(`little-flowers-report-${selectedYear?.label || 'report'}.pdf`);
-      toast({ title: '📄 PDF exported' });
+      toast({ title: 'PDF exported' });
     } catch {
       toast({ title: 'Export failed', variant: 'destructive' });
     }
@@ -309,27 +348,47 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">Reports & Analytics</h1>
-        <div className="grid grid-cols-2 gap-2 sm:flex">
-          <Button size="sm" variant="outline" onClick={handleExportPDF} className="gap-1.5">
-            <FileText className="h-3.5 w-3.5" /> PDF
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleExportCSV} className="gap-1.5">
-            <Download className="h-3.5 w-3.5" /> CSV
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title={t('reportsTitle')}
+        secondaryActions={
+          <>
+            <Button size="sm" variant="outline" onClick={handleExportPDF} className="gap-1.5">
+              <FileText className="h-3.5 w-3.5" /> PDF
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleExportCSV} className="gap-1.5">
+              <Download className="h-3.5 w-3.5" /> CSV
+            </Button>
+          </>
+        }
+      />
 
-      <Tabs defaultValue="monthly">
-        <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
-          <TabsTrigger value="monthly">Monthly</TabsTrigger>
-          <TabsTrigger value="yearly">Yearly P&L</TabsTrigger>
-          <TabsTrigger value="alltime">All-Time</TabsTrigger>
-          <TabsTrigger value="compare">Compare</TabsTrigger>
-          <TabsTrigger value="students">Student Fees</TabsTrigger>
-          <TabsTrigger value="expenses">Expense Analytics</TabsTrigger>
-        </TabsList>
+      <div className="space-y-4">
+        {/* Mobile Select for reports navigation */}
+        <div className="sm:hidden">
+          <Select value={reportTab} onValueChange={setReportTab}>
+            <SelectTrigger className="w-full bg-card">
+              <SelectValue placeholder="Select report..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="monthly">{t('reportTabMonthlyTrends')}</SelectItem>
+              <SelectItem value="yearly">{t('reportTabProfitLoss')}</SelectItem>
+              <SelectItem value="alltime">{t('reportTabOverview')}</SelectItem>
+              <SelectItem value="compare">{t('reportTabYearComparison')}</SelectItem>
+              <SelectItem value="students">{t('reportTabStudentFees')}</SelectItem>
+              <SelectItem value="expenses">{t('reportTabCategories')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Tabs value={reportTab} onValueChange={setReportTab}>
+          <TabsList className="hidden sm:inline-flex w-full justify-start overflow-x-auto sm:w-auto">
+            <TabsTrigger value="monthly">{t('reportTabMonthlyTrends')}</TabsTrigger>
+            <TabsTrigger value="yearly">{t('reportTabProfitLoss')}</TabsTrigger>
+            <TabsTrigger value="alltime">{t('reportTabOverview')}</TabsTrigger>
+            <TabsTrigger value="compare">{t('reportTabYearComparison')}</TabsTrigger>
+            <TabsTrigger value="students">{t('reportTabStudentFees')}</TabsTrigger>
+            <TabsTrigger value="expenses">{t('reportTabCategories')}</TabsTrigger>
+          </TabsList>
 
         {/* Monthly Summary — FIX 7 */}
         <TabsContent value="monthly" className="mt-4 space-y-4">
@@ -397,7 +456,7 @@ export default function ReportsPage() {
 
         {/* Yearly P&L — FIX 3 + FIX 5 */}
         <TabsContent value="yearly" className="mt-4 space-y-4">
-          <Select value={selectedYearId} onValueChange={setSelectedYearId}>
+          <Select value={effectiveYearId} onValueChange={setSelectedYearId}>
             <SelectTrigger className="w-full min-[420px]:w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               {academicYears.map((y) => (
@@ -455,7 +514,7 @@ export default function ReportsPage() {
                   </div>
                   {feeStatusAtCutoff.carryForward > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Additional Outstanding Fee Balance</span>
+                      <span className="text-muted-foreground">Last Year's Pending Fee Balance</span>
                       <span className="font-mono font-medium text-warning">{formatINR(feeStatusAtCutoff.carryForward)}</span>
                     </div>
                   )}
@@ -480,7 +539,7 @@ export default function ReportsPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             {schoolCategoryBreakdown.length > 0 && (
               <div className="rounded-lg border bg-card p-5">
-                <h3 className="mb-3 text-sm font-semibold">🏫 School Expenses</h3>
+                <h3 className="mb-3 text-sm font-semibold">School Expenses</h3>
                 <div className="flex flex-col items-center gap-4 sm:flex-row">
                   <div className="h-48 w-48 flex-shrink-0">
                     <ResponsiveContainer width="100%" height="100%">
@@ -509,7 +568,7 @@ export default function ReportsPage() {
 
             {homeCategoryBreakdown.length > 0 ? (
               <div className="rounded-lg border bg-card p-5">
-                <h3 className="mb-3 text-sm font-semibold">🏠 Home Expenses</h3>
+                <h3 className="mb-3 text-sm font-semibold">Home Expenses</h3>
                 <div className="flex flex-col items-center gap-4 sm:flex-row">
                   <div className="h-48 w-48 flex-shrink-0">
                     <ResponsiveContainer width="100%" height="100%">
@@ -689,7 +748,7 @@ export default function ReportsPage() {
         </TabsContent>
 
         <TabsContent value="students" className="mt-4 space-y-4">
-          <div className="flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between"><Select value={selectedYearId} onValueChange={setSelectedYearId}><SelectTrigger className="w-full min-[420px]:w-48"><SelectValue /></SelectTrigger><SelectContent>{academicYears.map((year) => <SelectItem key={year.id} value={year.id}>AY {year.label}</SelectItem>)}</SelectContent></Select><Button variant="outline" onClick={exportStudentFeesCsv}><Download className="mr-2 h-4 w-4"/>Export Student Fees CSV</Button></div>
+          <div className="flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between"><Select value={effectiveYearId} onValueChange={setSelectedYearId}><SelectTrigger className="w-full min-[420px]:w-48"><SelectValue /></SelectTrigger><SelectContent>{academicYears.map((year) => <SelectItem key={year.id} value={year.id}>AY {year.label}</SelectItem>)}</SelectContent></Select><Button variant="outline" onClick={exportStudentFeesCsv}><Download className="mr-2 h-4 w-4"/>Export Student Fees CSV</Button></div>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MiniCard label="Active Students" value={String(studentReport.summary.totalStudents)} color="text-primary"/><MiniCard label="Student Fee Obligation" value={formatINR(studentReport.summary.obligation)} color="text-primary"/><MiniCard label="Current Fees Pending" value={formatINR(studentReport.summary.pending)} color="text-warning"/><MiniCard label="Previous-Year Fees Pending" value={formatINR(studentReport.previousPending)} color="text-warning"/><MiniCard label="Fully Paid Students" value={String(studentReport.summary.fullyPaidStudents)} color="text-income"/><MiniCard label="Previous-Year Fees Received This AY" value={formatINR(studentReport.previousReceived)} color="text-income"/><MiniCard label="Cash Payments Recorded in App" value={formatINR(studentReport.cashActual)} color="text-income"/><MiniCard label="UPI Payments Recorded in App" value={formatINR(studentReport.upiActual)} color="text-income"/><MiniCard label="Bank / Cheque / Other" value={formatINR(studentReport.otherActual)} color="text-primary"/><MiniCard label="Unknown / Not Recorded" value={formatINR(studentReport.unknownActual)} color="text-muted-foreground"/></div>
           <div className="grid gap-3 md:grid-cols-2">{([['English Medium',studentReport.english],['Gujarati Medium',studentReport.gujarati]] as const).map(([label,value]) => <div key={label} className="rounded-lg border bg-card p-4"><div className="flex items-center justify-between"><h3 className="font-semibold">{label}</h3><span className="text-sm">{value.totalStudents} students</span></div><div className="mt-3 grid grid-cols-3 gap-2 text-xs"><span>Obligation<strong className="money-fit block font-mono text-sm">{formatINR(value.obligation)}</strong></span><span>Collected<strong className="money-fit block font-mono text-sm text-income">{formatINR(value.collected)}</strong></span><span>Pending<strong className="money-fit block font-mono text-sm text-warning">{formatINR(value.pending)}</strong></span></div><p className="mt-2 text-xs text-muted-foreground">{value.obligation ? Math.round(value.collected/value.obligation*100) : 0}% collected</p></div>)}</div>
           <div className="rounded-lg border bg-card"><div className="border-b p-4"><h3 className="font-semibold">Fees by Class</h3></div><div className="overflow-auto"><table className="w-full min-w-[680px] text-sm"><thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="p-3">Class</th><th>Students</th><th>Total Fee</th><th>Collected</th><th>Pending</th><th>Collection %</th></tr></thead><tbody>{studentReport.classes.map((item) => <tr key={item.className} className="border-b last:border-0"><td className="p-3 font-medium">{item.className}</td><td>{item.totalStudents} <span className="text-xs text-muted-foreground">({item.english} Eng · {item.gujarati} Guj)</span></td><td>{formatINR(item.obligation)}</td><td className="text-income">{formatINR(item.collected)}</td><td className="text-warning">{formatINR(item.pending)}</td><td>{item.obligation ? Math.round(item.collected/item.obligation*100) : 0}%</td></tr>)}</tbody></table></div></div>
@@ -699,7 +758,7 @@ export default function ReportsPage() {
 
         {/* Expense Analytics — FIX 5 */}
         <TabsContent value="expenses" className="mt-4 space-y-4">
-          <Select value={selectedYearId} onValueChange={setSelectedYearId}>
+          <Select value={effectiveYearId} onValueChange={setSelectedYearId}>
             <SelectTrigger className="w-full min-[420px]:w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               {academicYears.map((y) => (<SelectItem key={y.id} value={y.id}>AY {y.label}</SelectItem>))}
@@ -760,7 +819,7 @@ export default function ReportsPage() {
                   return (
                     <div key={c.name}>
                       <div className="mb-1 flex flex-col gap-1 text-sm min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
-                        <span className="text-fit">{i + 1}. {c.type === 'school' ? '🏫' : '🏠'} {c.name}</span>
+                        <span className="text-fit">{i + 1}. {c.type === 'school' ? 'School' : 'Home'} — {c.name}</span>
                         <span className="money-fit font-mono font-medium">{formatINR(c.value)}</span>
                       </div>
                       <div className="h-2 rounded-full bg-muted">
@@ -791,6 +850,7 @@ export default function ReportsPage() {
           )}
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   );
 }

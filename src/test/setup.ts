@@ -13,3 +13,10 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => {},
   }),
 });
+
+if (typeof window !== 'undefined') {
+  window.HTMLElement.prototype.scrollIntoView = function () {};
+  window.HTMLElement.prototype.hasPointerCapture = function () { return false; };
+  window.HTMLElement.prototype.setPointerCapture = function () {};
+  window.HTMLElement.prototype.releasePointerCapture = function () {};
+}

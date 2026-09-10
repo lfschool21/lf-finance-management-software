@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { Plus, School, Home, TrendingDown, Repeat } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 import { useFinanceStore } from '@/store/finance-store';
+import { useTranslation } from '@/lib/i18n';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { StatCard } from '@/components/StatCard';
 import { Button } from '@/components/ui/button';
@@ -10,6 +12,7 @@ import { AddExpenseModal } from '@/components/AddExpenseModal';
 import type { ExpenseEntry } from '@/types/finance';
 
 export default function ExpensesPage() {
+  const { t } = useTranslation();
   const { expenseEntries, currentYearId, academicYears } = useFinanceStore();
   const [tab, setTab] = useState('all');
   const [showModal, setShowModal] = useState(false);
@@ -42,37 +45,34 @@ export default function ExpensesPage() {
     setShowModal(true);
   }
 
-  function handleEditExisting(entry: ExpenseEntry) {
-    setEditEntry(entry);
-    setShowModal(true);
-  }
+
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold">Expenses</h1>
-          <p className="text-fit text-sm text-muted-foreground">AY {currentYear?.label}</p>
-        </div>
-        <Button variant="destructive" className="w-full gap-1.5 sm:w-auto" onClick={openAdd}>
-          <Plus className="h-4 w-4" />
-          Add Expense
-        </Button>
-      </div>
+      <PageHeader
+        title={t('expensesTitle')}
+        subtitle={`AY ${currentYear?.label || ''}`}
+        action={
+          <Button className="w-full gap-1.5 sm:w-auto" onClick={openAdd}>
+            <Plus className="h-4 w-4" />
+            {t('addExpense')}
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-3">
-        <StatCard title="School" value={formatINRAbbr(stats.school)} icon={School} variant="expense" />
-        <StatCard title="Home" value={formatINRAbbr(stats.home)} icon={Home} variant="pending" />
-        <StatCard title="Total" value={formatINRAbbr(stats.total)} icon={TrendingDown} variant="expense" />
+        <StatCard title={t('statSchool')} value={formatINRAbbr(stats.school)} icon={School} variant="expense" />
+        <StatCard title={t('statHome')} value={formatINRAbbr(stats.home)} icon={Home} variant="pending" />
+        <StatCard title={t('statTotal')} value={formatINRAbbr(stats.total)} icon={TrendingDown} variant="expense" />
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="all">All ({stats.entries.length})</TabsTrigger>
-          <TabsTrigger value="school">🏫 School</TabsTrigger>
-          <TabsTrigger value="home">🏠 Home</TabsTrigger>
+          <TabsTrigger value="all">{t('tabAllExpenses', { count: stats.entries.length })}</TabsTrigger>
+          <TabsTrigger value="school">{t('tabSchoolExpenses')}</TabsTrigger>
+          <TabsTrigger value="home">{t('tabHomeExpenses')}</TabsTrigger>
           <TabsTrigger value="recurring">
-            <Repeat className="mr-1 h-3.5 w-3.5" /> Recurring
+            <Repeat className="mr-1 h-3.5 w-3.5" /> {t('tabRecurringExpenses')}
           </TabsTrigger>
         </TabsList>
 
@@ -80,8 +80,8 @@ export default function ExpensesPage() {
           {sorted.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-card py-12">
               <TrendingDown className="mb-3 h-10 w-10 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">No expenses recorded yet.</p>
-              <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={openAdd}><Plus className="h-4 w-4" />Add Expense</Button>
+              <p className="text-sm text-muted-foreground">{t('noExpensesRecorded')}</p>
+              <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={openAdd}><Plus className="h-4 w-4" />{t('addExpense')}</Button>
             </div>
           ) : (
             <div className="divide-y rounded-lg border bg-card">
@@ -130,7 +130,7 @@ export default function ExpensesPage() {
         isOpen={showModal}
         onClose={() => setShowModal(false)}
         editEntry={editEntry}
-        onEditExisting={handleEditExisting}
+        onEditExisting={openEdit}
       />
     </div>
   );

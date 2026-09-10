@@ -8,9 +8,11 @@ import {
   Wallet,
 } from 'lucide-react';
 import { useFinanceStore } from '@/store/finance-store';
+import { useTranslation } from '@/lib/i18n';
 import { StatCard } from '@/components/StatCard';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/PageHeader';
 import type { AccountType } from '@/types/finance';
 
 const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
@@ -26,6 +28,7 @@ const ACCOUNT_TYPE_ICON = {
 };
 
 export default function BankBalancesPage() {
+  const { t } = useTranslation();
   const {
     accounts,
     incomeEntries,
@@ -122,37 +125,35 @@ export default function BankBalancesPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="min-w-0">
-        <h1 className="text-2xl font-bold">Balances</h1>
-        <p className="text-fit text-sm text-muted-foreground">
-          Current balances across all accounts; archived historical accounts remain included.
-        </p>
-      </div>
+      <PageHeader
+        title={t('balancesTitle')}
+        subtitle={t('balancesSubtitle')}
+      />
 
       <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Total Liquid Balance"
+          title={t('totalLiquidBalance')}
           value={formatINRAbbr(totals.totalBalance)}
           fullValue={formatINR(totals.totalBalance)}
           icon={Landmark}
           variant="balance"
         />
         <StatCard
-          title="Bank Total"
+          title={t('bankTotal')}
           value={formatINRAbbr(totals.bankBalance)}
           fullValue={formatINR(totals.bankBalance)}
           icon={Banknote}
           variant="profit"
         />
         <StatCard
-          title="School Bank"
+          title={t('schoolBank')}
           value={formatINRAbbr(totals.schoolBalance)}
           fullValue={formatINR(totals.schoolBalance)}
           icon={Landmark}
           variant="income"
         />
         <StatCard
-          title="Cash"
+          title={t('cash')}
           value={formatINRAbbr(totals.cashBalance)}
           fullValue={formatINR(totals.cashBalance)}
           icon={Wallet}
@@ -162,14 +163,14 @@ export default function BankBalancesPage() {
 
       <div className="rounded-lg border bg-card">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <h3 className="text-sm font-semibold">Account Reconciliation</h3>
-          <span className="text-xs text-muted-foreground">{accountRows.length} tracked accounts</span>
+          <h3 className="text-sm font-semibold">{t('accountReconciliation')}</h3>
+          <span className="text-xs text-muted-foreground">{t('trackedAccounts', { count: accountRows.length })}</span>
         </div>
 
         {accountRows.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
             <Landmark className="mb-3 h-10 w-10 text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">No accounts found.</p>
+            <p className="text-sm text-muted-foreground">{t('noAccountsFound')}</p>
           </div>
         ) : (
           <div className="divide-y">
@@ -193,10 +194,10 @@ export default function BankBalancesPage() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:w-[560px]">
-                      <BalancePart label="Opening" value={account.startingBalance} />
-                      <BalancePart label="Net Movement" value={movementTotal} />
+                      <BalancePart label={t('opening')} value={account.startingBalance} />
+                      <BalancePart label={t('netMovement')} value={movementTotal} />
                       <div>
-                        <p className="text-muted-foreground">Current Balance</p>
+                        <p className="text-muted-foreground">{t('currentBalance')}</p>
                         <p className={cn('money-fit font-mono text-base font-bold', account.balance >= 0 ? 'text-primary' : 'text-expense')}>
                           {formatINR(account.balance)}
                         </p>
@@ -205,7 +206,7 @@ export default function BankBalancesPage() {
                   </div>
 
                   <details className="group mt-3 rounded-lg border bg-muted/20">
-                    <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Show reconciliation details</summary>
+                    <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('showReconciliationDetails')}</summary>
                     <div className="grid gap-2 border-t p-3 text-xs sm:grid-cols-3 lg:grid-cols-6">
                       <MiniMetric label="Income" value={account.income} tone="income" />
                       <MiniMetric label="Expenses" value={account.expenses} tone="expense" />
@@ -224,13 +225,13 @@ export default function BankBalancesPage() {
 
       <div className="rounded-lg border bg-card">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <h3 className="text-sm font-semibold">Recent Balance Movements</h3>
+          <h3 className="text-sm font-semibold">{t('recentBalanceMovements')}</h3>
         </div>
 
         {recentMovements.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
             <ArrowLeftRight className="mb-3 h-10 w-10 text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">No account movements yet.</p>
+            <p className="text-sm text-muted-foreground">{t('noAccountMovementsYet')}</p>
           </div>
         ) : (
           <div className="divide-y">

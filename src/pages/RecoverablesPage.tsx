@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { HandCoins, Loader2, Plus, RotateCcw } from 'lucide-react';
 import { useFinanceStore } from '@/store/finance-store';
+import { useTranslation } from '@/lib/i18n';
 import { getRecoverableSummary, parsePositiveAmount, dateKey } from '@/lib/finance-domain';
+import { PageHeader } from '@/components/PageHeader';
 import { formatINR, formatINRAbbr } from '@/utils/currency';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -15,6 +17,7 @@ import { toast } from '@/hooks/use-toast';
 import type { Recoverable, RecoverableRepayment } from '@/types/finance';
 
 export default function RecoverablesPage() {
+  const { t } = useTranslation();
   const { recoverables, recoverableRepayments, accounts } = useFinanceStore();
   const [editAdvance, setEditAdvance] = useState<Recoverable | null | undefined>();
   const [repaymentTarget, setRepaymentTarget] = useState<Recoverable | null>(null);
@@ -34,16 +37,19 @@ export default function RecoverablesPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div><h1 className="text-2xl font-bold">Recoverables / Advances</h1><p className="text-sm text-muted-foreground">Money given that must be recovered; not an expense.</p></div>
-        <Button className="gap-1.5" onClick={() => setEditAdvance(null)}><Plus className="h-4 w-4" /> Give Advance</Button>
-      </div>
+      <PageHeader
+        title={t('recoverablesAndAdvances')}
+        subtitle={t('recoverablesPageSubtitle')}
+        action={
+          <Button className="gap-1.5" onClick={() => setEditAdvance(null)}><Plus className="h-4 w-4" /> {t('giveAdvance')}</Button>
+        }
+      />
       <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:grid-cols-3">
-        <StatCard title="Still Outstanding" value={formatINRAbbr(totals.outstanding)} fullValue={formatINR(totals.outstanding)} icon={HandCoins} variant="pending" />
-        <StatCard title="Money Given" value={formatINRAbbr(totals.given)} fullValue={formatINR(totals.given)} icon={HandCoins} variant="balance" />
-        <StatCard title="Recoverable Repayments Received" value={formatINRAbbr(totals.recovered)} fullValue={formatINR(totals.recovered)} icon={RotateCcw} variant="balance" />
+        <StatCard title={t('stillOutstanding')} value={formatINRAbbr(totals.outstanding)} fullValue={formatINR(totals.outstanding)} icon={HandCoins} variant="pending" />
+        <StatCard title={t('moneyGiven')} value={formatINRAbbr(totals.given)} fullValue={formatINR(totals.given)} icon={HandCoins} variant="balance" />
+        <StatCard title={t('repaymentsReceived')} value={formatINRAbbr(totals.recovered)} fullValue={formatINR(totals.recovered)} icon={RotateCcw} variant="balance" />
       </div>
-      {rows.length === 0 ? <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">No recoverable advances recorded.</div> : (
+      {rows.length === 0 ? <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">{t('noRecoverablesRecorded')}</div> : (
         <div className="divide-y rounded-lg border bg-card">
           {rows.map((row) => (
             <div key={row.recoverable.id} className="p-4">
@@ -53,22 +59,22 @@ export default function RecoverablesPage() {
                   <p className="text-xs text-muted-foreground">{row.recoverable.dateGiven.toLocaleDateString('en-IN')} • {accountName(row.recoverable.sourceAccountId)}</p>
                   {row.recoverable.notes && <p className="mt-1 text-sm text-muted-foreground">{row.recoverable.notes}</p>}
                 </button>
-                <div className="text-left sm:text-right"><p className="font-mono font-bold text-warning">{formatINR(row.outstanding)} remaining</p><p className="text-xs capitalize text-muted-foreground">{row.status.replace('_', ' ')}</p></div>
+                <div className="text-left sm:text-right"><p className="font-mono font-bold text-warning">{formatINR(row.outstanding)} {t('remainingWord')}</p><p className="text-xs capitalize text-muted-foreground">{row.status.replace('_', ' ')}</p></div>
               </div>
               <div className="mt-3 grid grid-cols-1 gap-2 text-xs min-[360px]:grid-cols-2 sm:grid-cols-3">
-                <Metric label="Given" value={row.recoverable.originalAmount} />
-                <Metric label="Recovered" value={row.recovered} />
-                <Metric label="Remaining" value={row.outstanding} />
+                <Metric label={t('metricGiven')} value={row.recoverable.originalAmount} />
+                <Metric label={t('metricRecovered')} value={row.recovered} />
+                <Metric label={t('metricRemaining')} value={row.outstanding} />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {row.outstanding > 0 && <Button size="sm" onClick={() => { setRepaymentTarget(row.recoverable); setEditRepayment(undefined); }}>Record Repayment</Button>}
-                <Button size="sm" variant="outline" onClick={() => setEditAdvance(row.recoverable)}>Edit Advance</Button>
+                {row.outstanding > 0 && <Button size="sm" onClick={() => { setRepaymentTarget(row.recoverable); setEditRepayment(undefined); }}>{t('recordRepayment')}</Button>}
+                <Button size="sm" variant="outline" onClick={() => setEditAdvance(row.recoverable)}>{t('editAdvance')}</Button>
               </div>
               {recoverableRepayments.filter((p) => p.recoverableId === row.recoverable.id).length > 0 && (
                 <div className="mt-3 divide-y rounded-md border">
                   {recoverableRepayments.filter((p) => p.recoverableId === row.recoverable.id).sort((a, b) => b.date.getTime() - a.date.getTime()).map((p) => (
                     <button key={p.id} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs" onClick={() => { setRepaymentTarget(row.recoverable); setEditRepayment(p); }}>
-                      <span>{p.date.toLocaleDateString('en-IN')} • {accountName(p.accountId)} • liquidity restored</span><span className="font-mono font-semibold text-primary">{formatINR(p.amount)} returned</span>
+                      <span>{p.date.toLocaleDateString('en-IN')} • {accountName(p.accountId)} • {t('liquidityRestored')}</span><span className="font-mono font-semibold text-primary">{formatINR(p.amount)} {t('repaymentReturned')}</span>
                     </button>
                   ))}
                 </div>

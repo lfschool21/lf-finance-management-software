@@ -69,7 +69,7 @@ export function RecurringReviewModal({ isOpen, onClose }: RecurringReviewModalPr
       await init();
 
       setDismissed((prev) => new Set(prev).add(item.template.id));
-      toast({ title: `✅ ${item.template.category} recorded` });
+      toast({ title: `${item.template.category} recorded` });
     } catch (err) {
       toast({
         title: 'Error',

@@ -74,12 +74,12 @@ export interface IncomeEntry {
   date: Date;
   accountId: string;
   isLateCollection: boolean;
-  originalYearId: string | null;
-  studentEnrollmentId: string | null;
-  paymentMethod: PaymentMethod | null;
-  paymentReference: string;
-  notes: string;
-  tags: string[];
+  originalYearId?: string | null;
+  studentEnrollmentId?: string | null;
+  paymentMethod?: PaymentMethod | null;
+  paymentReference?: string;
+  notes?: string;
+  tags?: string[];
 }
 
 export interface ExpenseEntry {
@@ -87,14 +87,14 @@ export interface ExpenseEntry {
   academicYearId: string;
   expenseType: ExpenseTopType;
   category: string;
-  subCategory: string;
+  subCategory?: string;
   amount: number;
   date: Date;
   accountId: string;
-  description: string;
-  tags: string[];
-  isRecurringInstance: boolean;
-  recurringTemplateId: string | null;
+  description?: string;
+  tags?: string[];
+  isRecurringInstance?: boolean;
+  recurringTemplateId?: string | null;
 }
 
 export interface Transfer {

@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Search as SearchIcon, SlidersHorizontal, X } from 'lucide-react';
+import { Search as SearchIcon, SlidersHorizontal, X, Users } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 import { useFinanceStore } from '@/store/finance-store';
+import { useTranslation } from '@/lib/i18n';
 import { formatINR } from '@/utils/currency';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +33,7 @@ interface SearchResult {
 }
 
 export default function SearchPage() {
+  const { t } = useTranslation();
   const { incomeEntries, expenseEntries, transfers, recoverables, recoverableRepayments, accounts, academicYears } = useFinanceStore();
   const { students, enrollments } = useStudentStore();
   const navigate = useNavigate();
@@ -231,13 +234,13 @@ export default function SearchPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <h1 className="text-2xl font-bold">Search</h1>
+      <PageHeader title={t('searchTitle')} />
 
       <div className="flex min-w-0 gap-2">
         <div className="relative flex-1">
           <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search transactions, student, admission number..."
+            placeholder={t('searchPlaceholder')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="pl-9"
@@ -255,7 +258,7 @@ export default function SearchPage() {
           aria-expanded={showFilters}
         >
           <SlidersHorizontal className="h-4 w-4" />
-          <span className="hidden min-[380px]:inline">Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
+          <span className="hidden min-[380px]:inline">{t('filterTransactions')}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
           <span className="sr-only min-[380px]:hidden">Show filters{activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}</span>
         </Button>
       </div>
@@ -264,8 +267,8 @@ export default function SearchPage() {
       {showFilters && (
         <div className="rounded-lg border bg-card p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Advanced Filters</h3>
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs">Clear All</Button>
+            <h3 className="text-sm font-semibold">{t('filterTransactions')}</h3>
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs">{t('clearFilters')}</Button>
           </div>
 
           <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 sm:grid-cols-4">
@@ -358,9 +361,59 @@ export default function SearchPage() {
         </div>
       )}
 
+      {/* Student Results */}
+      {query.length >= 2 && (() => {
+        const q = query.toLowerCase().trim();
+        const studentResults = students.filter((s) => {
+          return (
+            s.fullName.toLowerCase().includes(q) ||
+            (s.admissionNumber || '').toLowerCase().includes(q)
+          );
+        }).slice(0, 10);
+        const enrollmentMatches = enrollments.filter((e) =>
+          (e.className || '').toLowerCase().includes(q)
+        );
+        const classStudentIds = new Set(enrollmentMatches.map((e) => e.studentId));
+        const classStudents = students.filter((s) => classStudentIds.has(s.id) && !studentResults.some((r) => r.id === s.id)).slice(0, 5);
+        const allStudentResults = [...studentResults, ...classStudents];
+
+        if (allStudentResults.length > 0) {
+          return (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Students ({allStudentResults.length})</p>
+              <div className="divide-y rounded-lg border bg-card">
+                {allStudentResults.map((s) => {
+                  const enr = enrollments.find((e) => e.studentId === s.id);
+                  return (
+                    <button
+                      type="button"
+                      key={s.id}
+                      className="flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      onClick={() => navigate(`/students/${s.id}`)}
+                    >
+                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                        <Users className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-fit text-sm font-medium">{s.fullName}</p>
+                        <p className="text-fit text-xs text-muted-foreground">
+                          {s.admissionNumber || 'No admission #'}
+                          {enr ? ` • ${enr.className} • ${enr.medium}` : ''}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
+
       {(query.length >= 2 || (showFilters && results.length > 0)) && (
         <p className="text-sm text-muted-foreground">
-          Found {results.length} result{results.length !== 1 ? 's' : ''}
+          Found {results.length} transaction{results.length !== 1 ? 's' : ''}
         </p>
       )}
 
@@ -394,12 +447,19 @@ export default function SearchPage() {
         </div>
       )}
 
-      {query.length >= 2 && results.length === 0 && !showFilters && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-card py-12">
-          <SearchIcon className="mb-3 h-10 w-10 text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground">No results found for "{query}"</p>
-        </div>
-      )}
+      {query.length >= 2 && results.length === 0 && !showFilters && (() => {
+        const q = query.toLowerCase().trim();
+        const hasStudentResults = students.some((s) =>
+          s.fullName.toLowerCase().includes(q) || (s.admissionNumber || '').toLowerCase().includes(q)
+        );
+        if (hasStudentResults) return null;
+        return (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-card py-12">
+            <SearchIcon className="mb-3 h-10 w-10 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">{t('noTransactionsMatch')}</p>
+          </div>
+        );
+      })()}
 
       <AddIncomeModal isOpen={!!editIncome} onClose={() => setEditIncome(undefined)} editEntry={editIncome} />
       <AddExpenseModal isOpen={!!editExpense} onClose={() => setEditExpense(undefined)} editEntry={editExpense} />

@@ -42,7 +42,7 @@ export function StatCard({ title, value, icon: Icon, variant, subtitle, classNam
         <div className="min-w-0 flex-1">
           <p className="text-fit text-xs font-medium uppercase tracking-wider opacity-70">{title}</p>
           <p
-            className="mt-1 break-all font-mono text-lg font-bold leading-tight sm:text-xl"
+            className="mt-1 whitespace-nowrap font-mono text-lg font-bold leading-tight sm:text-xl font-mono-nums"
             aria-label={fullValue ? `${title}: ${fullValue}` : undefined}
             title={fullValue}
           >

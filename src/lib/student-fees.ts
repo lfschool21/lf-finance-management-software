@@ -1,5 +1,6 @@
 import type { IncomeEntry, PaymentMethod } from '@/types/finance';
 import type { Student, StudentEnrollment, StudentFeeSummary, StudentMedium } from '@/types/students';
+import { compareClassNames } from '@/utils/student-order';
 
 const EPSILON = 0.005;
 
@@ -70,9 +71,21 @@ export function getStudentPreviousPending(
   enrollments: StudentEnrollment[],
   incomeEntries: IncomeEntry[],
 ): number {
-  return enrollments
+  const historicalPending = enrollments
     .filter((enrollment) => enrollment.studentId === studentId && enrollment.academicYearId !== currentYearId)
     .reduce((sum, enrollment) => sum + getStudentFeeSummary(enrollment, incomeEntries).pending, 0);
+
+  const currentEnrollment = enrollments.find(
+    (enrollment) => enrollment.studentId === studentId && enrollment.academicYearId === currentYearId,
+  );
+  const currentCarryPending = currentEnrollment
+    ? Math.min(
+        currentEnrollment.additionalOutstandingAmount || 0,
+        getStudentFeeSummary(currentEnrollment, incomeEntries).pending,
+      )
+    : 0;
+
+  return historicalPending + currentCarryPending;
 }
 
 export interface RosterSummary {
@@ -113,7 +126,7 @@ export function groupRosterByClass(enrollments: StudentEnrollment[], incomeEntri
   return Array.from(groups.entries()).map(([className, values]) => ({
     className,
     ...summarizeRoster(values, incomeEntries),
-  })).sort((a, b) => a.className.localeCompare(b.className, undefined, { numeric: true }));
+  })).sort((a, b) => compareClassNames(a.className, b.className));
 }
 
 export function findStudentForEnrollment(

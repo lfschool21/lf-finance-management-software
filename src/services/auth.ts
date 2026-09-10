@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 import type { Session, User, AuthChangeEvent } from '@supabase/supabase-js';
+import { useFinanceStore } from '@/store/finance-store';
+import { useStudentStore } from '@/store/student-store';
 
 export async function signUp(email: string, password: string) {
   const { data, error } = await supabase.auth.signUp({ email, password });
@@ -11,7 +13,14 @@ export async function signIn(email: string, password: string) {
   return { data, error };
 }
 
+export async function signInAnonymously(options?: { options?: { captchaToken?: string } }) {
+  const { data, error } = await supabase.auth.signInAnonymously(options);
+  return { data, error };
+}
+
 export async function signOut() {
+  useFinanceStore.getState().reset();
+  useStudentStore.getState().reset();
   const { error } = await supabase.auth.signOut();
   return { error };
 }

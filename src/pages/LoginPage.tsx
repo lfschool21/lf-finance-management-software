@@ -1,17 +1,28 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { signIn } from '@/services/auth';
-import { supabase } from '@/services/supabase';
+import { signIn, getSession } from '@/services/auth';
+import { startDemo } from '@/services/demo';
+import { isDemoUser } from '@/lib/demo-mode';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GraduationCap, Loader2 } from 'lucide-react';
+import { GraduationCap, Loader2, PlayCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    getSession().then(({ data }) => {
+      if (data?.session?.user && !isDemoUser(data.session.user)) {
+        navigate('/', { replace: true });
+      }
+    });
+  }, [navigate]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,23 +36,22 @@ export default function LoginPage() {
       return;
     }
 
-    // Check if setup is complete
-    const [accountsResult, yearsResult] = await Promise.all([
-      supabase.from('accounts').select('id').limit(1),
-      supabase.from('academic_years').select('id').limit(1),
-    ]);
-    const setupError = accountsResult.error || yearsResult.error;
-    if (setupError) {
-      setError(setupError.message);
-      setLoading(false);
-      return;
-    }
-    if (!accountsResult.data?.length || !yearsResult.data?.length) {
-      navigate('/setup', { replace: true });
-    } else {
-      navigate('/', { replace: true });
-    }
+    // Direct redirect to dashboard for existing account
+    navigate('/', { replace: true });
     setLoading(false);
+  }
+
+  async function handleExploreDemo() {
+    setError('');
+    setDemoLoading(true);
+    try {
+      await startDemo();
+      navigate('/', { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Demo is temporarily unavailable. Please try again later.');
+    } finally {
+      setDemoLoading(false);
+    }
   }
 
   return (
@@ -71,14 +81,26 @@ export default function LoginPage() {
           </div>
           <div className="space-y-2">
             <label htmlFor="login-password" className="text-sm font-medium">Password</label>
-            <Input
-              id="login-password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+            <div className="relative">
+              <Input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                tabIndex={-1}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -87,11 +109,36 @@ export default function LoginPage() {
             </div>
           )}
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || demoLoading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Sign In
           </Button>
         </form>
+
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-background px-2 text-muted-foreground">OR</span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2 border-primary/30 hover:bg-primary/5 text-foreground"
+            onClick={handleExploreDemo}
+            disabled={loading || demoLoading}
+          >
+            {demoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4 text-primary" />}
+            {demoLoading ? 'Preparing Demo...' : 'Explore Demo'}
+          </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            No account required • Uses sample data
+          </p>
+        </div>
 
         <p className="text-center text-sm text-muted-foreground">
           First time?{' '}

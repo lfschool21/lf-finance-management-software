@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { SCHOOL_EXPENSE_CATEGORIES, HOME_EXPENSE_CATEGORIES } from '@/types/finance';
 import type { ExpenseEntry } from '@/types/finance';
 import { dateKey, parseDateOnly, parsePositiveAmount } from '@/lib/finance-domain';
+import { useTranslation } from '@/lib/i18n';
 
 const MONTHLY_CATEGORIES = ['Land Rent', 'Electricity Bill', 'Internet & Phone Bill'];
 
@@ -32,6 +33,7 @@ type DuplicateWarning = {
 };
 
 export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: AddExpenseModalProps) {
+  const { t } = useTranslation();
   const { accounts, expenseEntries, addExpense, updateExpense, deleteExpense, getYearForDate } = useFinanceStore();
 
   const [step, setStep] = useState(1);
@@ -104,7 +106,7 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
     if (expenseType === 'home') {
       const selectedAcc = accounts.find((a) => a.id === accountId);
       if (selectedAcc?.type === 'school_bank') {
-        errs.accountId = '❌ Home expenses cannot be paid from School Bank Account';
+        errs.accountId = 'Home expenses cannot be paid from School Bank Account';
       }
     }
 
@@ -205,10 +207,10 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
 
       if (isEdit && editEntry) {
         await updateExpense(editEntry.id, payload);
-        toast({ title: '✅ Expense updated' });
+        toast({ title: 'Expense updated' });
       } else {
         await addExpense(payload);
-        toast({ title: '✅ Expense recorded' });
+        toast({ title: 'Expense recorded' });
       }
       onClose();
     } catch (err) {
@@ -239,7 +241,7 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {isEdit ? 'Edit Expense' : step === 1 ? 'Expense Type' : step === 2 ? 'Select Category' : 'Expense Details'}
+              {isEdit ? t('editExpenseTitle') : step === 1 ? t('expenseTypeStep') : step === 2 ? t('selectCategoryStep') : t('expenseDetailsStep')}
             </DialogTitle>
           </DialogHeader>
 
@@ -255,8 +257,8 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
                   <School className="h-5 w-5 text-primary" />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-semibold">🏫 School Expense</p>
-                  <p className="text-fit text-xs text-muted-foreground">Salary, rent, bills, supplies...</p>
+                  <p className="font-semibold">{t('schoolExpenseCardTitle')}</p>
+                  <p className="text-fit text-xs text-muted-foreground">{t('schoolExpenseCardSub')}</p>
                 </div>
               </button>
               <button
@@ -268,8 +270,8 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
                   <Home className="h-5 w-5 text-warning" />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-semibold">🏠 Home Expense</p>
-                  <p className="text-fit text-xs text-muted-foreground">Fuel, groceries, personal...</p>
+                  <p className="font-semibold">{t('homeExpenseCardTitle')}</p>
+                  <p className="text-fit text-xs text-muted-foreground">{t('homeExpenseCardSub')}</p>
                 </div>
               </button>
             </div>
@@ -279,7 +281,7 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
           {step === 2 && (
             <div className="space-y-3">
               <Button variant="ghost" size="sm" onClick={() => setStep(1)} className="gap-1">
-                <ArrowLeft className="h-4 w-4" /> Back
+                <ArrowLeft className="h-4 w-4" /> {t('actionBack')}
               </Button>
               <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                 {categories.map((cat) => (
@@ -305,7 +307,7 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
               {/* Header showing type + category */}
               <div className="flex items-center gap-2 rounded-lg bg-muted p-2">
                 {expenseType === 'school' ? <School className="h-4 w-4 text-primary" /> : <Home className="h-4 w-4 text-warning" />}
-                <span className="text-fit text-sm font-medium">{expenseType === 'school' ? '🏫 School' : '🏠 Home'} → {category}</span>
+                <span className="text-fit text-sm font-medium">{expenseType === 'school' ? 'School' : 'Home'} → {category}</span>
                 {!isEdit && (
                   <Button variant="link" size="sm" className="ml-auto h-auto p-0 text-xs" onClick={() => setStep(1)}>
                     Change
@@ -376,14 +378,14 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
               <div className="grid grid-cols-2 gap-2 pt-2 sm:flex sm:items-center">
                 {isEdit && (
                   <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)} disabled={saving} className="col-span-2 sm:col-span-1">
-                    Delete
+                    {t('actionDelete')}
                   </Button>
                 )}
                 <div className="hidden flex-1 sm:block" />
-                <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-                <Button onClick={() => handleSave()} disabled={saving} variant="destructive" className="gap-1.5">
+                <Button variant="outline" onClick={onClose} disabled={saving}>{t('actionCancel')}</Button>
+                <Button onClick={() => handleSave()} disabled={saving} className="gap-1.5">
                   {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {isEdit ? 'Update' : 'Save'}
+                  {isEdit ? 'Update' : t('actionSave')}
                 </Button>
               </div>
             </div>
@@ -400,9 +402,9 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
               duplicateWarning?.type === 'similar' && 'text-warning',
               duplicateWarning?.type === 'monthly' && 'text-orange-500',
             )}>
-              {duplicateWarning?.type === 'exact' && '⚠️ Possible Duplicate'}
-              {duplicateWarning?.type === 'similar' && '⚠️ Similar Entry Found'}
-              {duplicateWarning?.type === 'monthly' && '⚠️ Already Recorded This Month'}
+              {duplicateWarning?.type === 'exact' && 'Possible Duplicate'}
+              {duplicateWarning?.type === 'similar' && 'Similar Entry Found'}
+              {duplicateWarning?.type === 'monthly' && 'Already Recorded This Month'}
             </AlertDialogTitle>
             <AlertDialogDescription>{duplicateWarning?.message}</AlertDialogDescription>
           </AlertDialogHeader>

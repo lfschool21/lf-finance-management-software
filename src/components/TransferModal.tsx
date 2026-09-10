@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useFinanceStore } from '@/store/finance-store';
+import { useTranslation } from '@/lib/i18n';
 import { formatINR } from '@/utils/currency';
 import { toast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
@@ -28,6 +29,7 @@ interface TransferModalProps {
 }
 
 export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps) {
+  const { t } = useTranslation();
   const { accounts, addTransfer, updateTransfer, deleteTransfer, getAccountBalance } = useFinanceStore();
 
   const [fromAccountId, setFromAccountId] = useState('');
@@ -102,10 +104,10 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
 
       if (isEdit && editEntry) {
         await updateTransfer(editEntry.id, payload);
-        toast({ title: '✅ Transfer updated' });
+        toast({ title: 'Transfer updated' });
       } else {
         await addTransfer(payload);
-        toast({ title: '✅ Transfer recorded' });
+        toast({ title: 'Transfer recorded' });
       }
       onClose();
     } catch (err) {
@@ -135,12 +137,12 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
       <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{isEdit ? 'Edit Transfer' : 'Transfer Money'}</DialogTitle>
+            <DialogTitle>{isEdit ? 'Edit Transfer' : t('transferFunds')}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <div>
-              <Label>From Account</Label>
+              <Label>{t('fromAccount')}</Label>
               <Select value={fromAccountId} onValueChange={setFromAccountId}>
                 <SelectTrigger><SelectValue placeholder="Select source" /></SelectTrigger>
                 <SelectContent>
@@ -153,7 +155,7 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
             </div>
 
             <div>
-              <Label>To Account</Label>
+              <Label>{t('toAccount')}</Label>
               <Select value={toAccountId} onValueChange={setToAccountId}>
                 <SelectTrigger><SelectValue placeholder="Select destination" /></SelectTrigger>
                 <SelectContent>
@@ -201,14 +203,14 @@ export function TransferModal({ isOpen, onClose, editEntry }: TransferModalProps
             <div className="grid grid-cols-2 gap-2 pt-2 sm:flex sm:items-center">
               {isEdit && (
                 <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)} disabled={saving} className="col-span-2 sm:col-span-1">
-                  Delete
+                  {t('actionDelete')}
                 </Button>
               )}
               <div className="hidden flex-1 sm:block" />
-              <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+              <Button variant="outline" onClick={onClose} disabled={saving}>{t('actionCancel')}</Button>
               <Button onClick={handleSave} disabled={saving} className="gap-1.5">
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                {isEdit ? 'Update' : 'Transfer'}
+                {isEdit ? 'Update' : t('transfer')}
               </Button>
             </div>
           </div>

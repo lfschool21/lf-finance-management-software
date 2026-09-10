@@ -17,6 +17,7 @@ import * as expensesService from '@/services/expenses';
 import * as transfersService from '@/services/transfers';
 import * as recurringService from '@/services/recurring';
 import * as recoverablesService from '@/services/recoverables';
+import { supabase } from '@/services/supabase';
 import {
   findAcademicYearForDate,
   getAccountBalance as calculateAccountBalance,
@@ -178,11 +179,13 @@ interface FinanceState {
   isSetupComplete: boolean;
   isLoading: boolean;
   isInitialized: boolean;
+  initializedForUserId: string | null;
   error: string | null;
   isDarkMode: boolean;
   pendingRecurringItems: PendingRecurringItem[];
   toggleDarkMode: () => void;
-  init: () => Promise<void>;
+  reset: () => void;
+  init: (force?: boolean, targetUserId?: string) => Promise<void>;
   addIncome: (data: incomeService.IncomeInsert) => Promise<void>;
   updateIncome: (id: string, data: Partial<incomeService.IncomeInsert>) => Promise<void>;
   deleteIncome: (id: string) => Promise<void>;
@@ -225,6 +228,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
   isSetupComplete: false,
   isLoading: false,
   isInitialized: false,
+  initializedForUserId: null,
   error: null,
   isDarkMode: false,
   pendingRecurringItems: [],
@@ -237,7 +241,42 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       return { isDarkMode: next };
     }),
 
-  init: async () => {
+  reset: () => {
+    set({
+      academicYears: [],
+      accounts: [],
+      incomeEntries: [],
+      expenseEntries: [],
+      transfers: [],
+      recurringTemplates: [],
+      recoverables: [],
+      recoverableRepayments: [],
+      currentYearId: '',
+      isSetupComplete: false,
+      isLoading: false,
+      isInitialized: false,
+      initializedForUserId: null,
+      error: null,
+      pendingRecurringItems: [],
+    });
+  },
+
+  init: async (force = false, targetUserId?: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const currentUserId = targetUserId || user?.id || null;
+    if (!currentUserId) {
+      get().reset();
+      return;
+    }
+
+    if (get().isInitialized && get().initializedForUserId === currentUserId && !force) {
+      return;
+    }
+
+    if (get().initializedForUserId && get().initializedForUserId !== currentUserId) {
+      get().reset();
+    }
+
     set({ isLoading: true, error: null });
     try {
       const [yearsRes, accRes, incRes, expRes, trRes, recRes, recoverablesRes] = await Promise.all([
@@ -310,9 +349,10 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         recoverables,
         recoverableRepayments,
         currentYearId,
-        isSetupComplete: accounts.length > 0 && years.length > 0,
+        isSetupComplete: accounts.length > 0 || years.length > 0,
         isLoading: false,
         isInitialized: true,
+        initializedForUserId: currentUserId,
         error: null,
         isDarkMode: savedDark,
         pendingRecurringItems,
@@ -321,6 +361,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       set({
         isLoading: false,
         isInitialized: true,
+        initializedForUserId: currentUserId,
         error: err instanceof Error ? err.message : 'Failed to load data',
       });
     }
@@ -558,7 +599,16 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
   refreshAcademicYears: async () => {
     const { data, error } = await academicYearsService.getAll();
     if (error) throw error;
-    if (data) set({ academicYears: data.map(mapAcademicYear) });
+    if (data) {
+      const years = data.map(mapAcademicYear);
+      const activeYear = years.find((y) => y.status === 'active') || years[0];
+      set((state) => ({
+        academicYears: years,
+        currentYearId: state.currentYearId && years.some((y) => y.id === state.currentYearId)
+          ? state.currentYearId
+          : (activeYear?.id || ''),
+      }));
+    }
   },
 
   refreshRecurringTemplates: async () => {

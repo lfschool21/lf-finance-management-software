@@ -35,11 +35,11 @@ const App = () => (
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
 
-          {/* Setup (auth required, setup not required) */}
+          {/* Setup (auth required) */}
           <Route
             path="/setup"
             element={
-              <AuthGuard requireSetup={false}>
+              <AuthGuard>
                 <SetupWizard />
               </AuthGuard>
             }
