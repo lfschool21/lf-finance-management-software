@@ -146,27 +146,26 @@ describe('Students Experience Redesign', () => {
     );
 
     // Header elements
-    expect(screen.getByRole('heading', { name: 'Students' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Students/i })).toBeInTheDocument();
     expect(screen.getByText('Manage student records and fee accounts')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Add Student/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Import \/ Export/i })).toBeInTheDocument();
 
-    // Compact Overview Metrics
-    expect(screen.getByText('Total Students')).toBeInTheDocument();
-    expect(screen.getByText('Fees Pending')).toBeInTheDocument();
-    expect(screen.getByText('Fully Paid')).toBeInTheDocument();
+    // 4 Key Overview Metrics for active medium (default Gujarati)
+    expect(screen.getByText('Gujarati Students')).toBeInTheDocument();
+    expect(screen.getAllByText('This Year Pending').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Previous Year Pending').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Total Pending').length).toBeGreaterThan(0);
 
-    // Roster rows rendered in data table
-    expect(screen.getAllByText('Aarav Patel').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Bhavna Shah').length).toBeGreaterThan(0);
+    // Class Card is rendered
+    expect(screen.getByRole('heading', { name: 'Class 3' })).toBeInTheDocument();
 
-    // Search bar functionality
-    const searchInput = screen.getByPlaceholderText('Search by student name or admission number...');
+    // Global Search bar functionality across mediums
+    const searchInput = screen.getByPlaceholderText('Search all students across mediums by name or admission number...');
     expect(searchInput).toBeInTheDocument();
 
     fireEvent.change(searchInput, { target: { value: 'Bhavna' } });
     expect(screen.getAllByText('Bhavna Shah').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Aarav Patel')).not.toBeInTheDocument();
   });
 
   it('renders StudentDetailPage with 3 tabs, fee calculation, and payment history', () => {
@@ -183,32 +182,26 @@ describe('Students Experience Redesign', () => {
     expect(screen.getByText(/Admission ADM-101/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Record Payment/i })).toBeInTheDocument();
 
-    // Check 3 tabs exist
+    // Check 2 tabs exist (Overview and Payments)
     expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Payments/ })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Previous Years/ })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Previous Years/ })).not.toBeInTheDocument();
 
-    // Verify previous year dues callout is rendered with simple terminology (stu-1 has 5000 pending from Class 4)
-    expect(screen.getByText(/Last Year's Pending Fees:/)).toBeInTheDocument();
-
-    // Verify overview fee figures
+    // Verify overview fee cards: Current-year fee card and previous-year outstanding
     expect(screen.getByText('Current Fee Account')).toBeInTheDocument();
+    expect(screen.getByText('Previous-Year Outstanding')).toBeInTheDocument();
     expect(screen.getByText('Payment Collection Breakdown')).toBeInTheDocument();
     expect(screen.getByText('Cash')).toBeInTheDocument();
     expect(screen.getByText('UPI')).toBeInTheDocument();
     expect(screen.queryByText('Bank / Other')).not.toBeInTheDocument();
     expect(screen.queryByText('Opening Imported')).not.toBeInTheDocument();
 
-    // Clicking "View Previous Years" button from overview warning switches to previous-years tab
-    const viewPreviousBtn = screen.getByRole('button', { name: 'View Previous Years' });
-    fireEvent.click(viewPreviousBtn);
-    expect(screen.getByText('Historical Academic Years')).toBeInTheDocument();
-    expect(screen.getByText('Academic Year 2025-26')).toBeInTheDocument();
-
     // Switch to Payments tab
     const paymentsTab = screen.getByRole('tab', { name: /Payments/ });
     fireEvent.click(paymentsTab);
     expect(screen.getByText('Recorded Fee Payments')).toBeInTheDocument();
+    expect(screen.queryByText('Previous-Year Fee Records')).not.toBeInTheDocument();
+
     expect(screen.queryByText('Opening Fee History')).not.toBeInTheDocument();
     expect(screen.getByText('UPI-987654')).toBeInTheDocument();
     // Verify Edit and Delete payment action buttons are rendered
@@ -225,16 +218,12 @@ describe('Students Experience Redesign', () => {
       </MemoryRouter>
     );
 
-    // Switch to Previous Years tab
-    const prevYearsTab = screen.getByRole('tab', { name: /Previous Years/ });
-    fireEvent.click(prevYearsTab);
-
-    // Click "Add Previous-Year Fee" button
-    const addHistoricalBtn = screen.getByRole('button', { name: /Add Previous-Year Fee/i });
-    fireEvent.click(addHistoricalBtn);
+    // On Overview tab, click "Edit Fee Record" on Previous-Year Outstanding card
+    const editHistoricalBtn = screen.getByRole('button', { name: /Edit Fee Record/i });
+    fireEvent.click(editHistoricalBtn);
 
     // Modal opens with student context and simplified Pending Fee Left input
-    expect(screen.getByRole('heading', { name: 'Add Previous-Year Fee' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Edit Previous-Year Fee' })).toBeInTheDocument();
     expect(screen.getByText(/Admission: ADM-101/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Pending Fee Left/i)).toBeInTheDocument();
   });
@@ -308,21 +297,14 @@ describe('Students Experience Redesign', () => {
     );
 
     // Verify medium switcher tabs exist with accurate live counts
-    const allTab = screen.getByRole('tab', { name: /All Students/i });
     const gujTab = screen.getByRole('tab', { name: /Gujarati Medium/i });
     const engTab = screen.getByRole('tab', { name: /English Medium/i });
 
-    expect(allTab).toBeInTheDocument();
     expect(gujTab).toBeInTheDocument();
     expect(engTab).toBeInTheDocument();
 
-    // In All mode, both Aarav (English) and Bhavna (Gujarati) are visible
-    expect(screen.getAllByText('Aarav Patel').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Bhavna Shah').length).toBeGreaterThan(0);
-
-    // Medium badges are visible in All mode
-    expect(screen.getAllByText(/ENG · English/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/GUJ · Gujarati/i).length).toBeGreaterThan(0);
+    // In default Gujarati mode, Class 3 is visible
+    expect(screen.getByRole('heading', { name: 'Class 3' })).toBeInTheDocument();
   });
 
   it('switches to Gujarati Medium view and isolates Gujarati enrollments and classes', () => {
@@ -336,16 +318,21 @@ describe('Students Experience Redesign', () => {
     const gujTab = screen.getByRole('tab', { name: /Gujarati Medium/i });
     fireEvent.click(gujTab);
 
-    // Only Bhavna Shah (Gujarati) should be visible, Aarav Patel (English) is filtered out
-    expect(screen.getAllByText('Bhavna Shah').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Aarav Patel')).not.toBeInTheDocument();
+    // Gujarati Class 3 card is visible, English Class 5 is not
+    expect(screen.getByRole('heading', { name: 'Class 3' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Class 5' })).not.toBeInTheDocument();
 
     // Gujarati overview banner should be displayed
     expect(screen.getByText('Gujarati Medium Summary')).toBeInTheDocument();
     expect(screen.getByText('Gujarati Students')).toBeInTheDocument();
 
-    // Counter shows Gujarati Medium students
-    expect(screen.getByText(/Gujarati Medium students/i)).toBeInTheDocument();
+    // Navigate into Class 3
+    const classCard = screen.getByRole('button', { name: /Class 3/i });
+    fireEvent.click(classCard);
+
+    // Only Bhavna Shah (Gujarati) is in Class 3, Aarav Patel (English) is not
+    expect(screen.getByText('Bhavna Shah')).toBeInTheDocument();
+    expect(screen.queryByText('Aarav Patel')).not.toBeInTheDocument();
   });
 
   it('switches to English Medium view and isolates English enrollments and classes', () => {
@@ -359,36 +346,41 @@ describe('Students Experience Redesign', () => {
     const engTab = screen.getByRole('tab', { name: /English Medium/i });
     fireEvent.click(engTab);
 
-    // Only Aarav Patel (English) should be visible, Bhavna Shah (Gujarati) is filtered out
-    expect(screen.getAllByText('Aarav Patel').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Bhavna Shah')).not.toBeInTheDocument();
+    // English Class 5 card is visible, Gujarati Class 3 is not
+    expect(screen.getByRole('heading', { name: 'Class 5' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Class 3' })).not.toBeInTheDocument();
 
     // English overview banner should be displayed
     expect(screen.getByText('English Medium Summary')).toBeInTheDocument();
     expect(screen.getByText('English Students')).toBeInTheDocument();
 
-    // Counter shows English Medium students
-    expect(screen.getByText(/English Medium students/i)).toBeInTheDocument();
+    // Navigate into Class 5
+    const classCard = screen.getByRole('button', { name: /Class 5/i });
+    fireEvent.click(classCard);
+
+    // Only Aarav Patel (English) is in Class 5, Bhavna Shah (Gujarati) is not
+    expect(screen.getByText('Aarav Patel')).toBeInTheDocument();
+    expect(screen.queryByText('Bhavna Shah')).not.toBeInTheDocument();
   });
 
-  it('operates search strictly within active medium workspace', () => {
+  it('operates search strictly within active class student list', () => {
     render(
-      <BrowserRouter>
+      <MemoryRouter initialEntries={['/students?medium=english&class=Class+5']}>
         <StudentsPage />
-      </BrowserRouter>
+      </MemoryRouter>
     );
 
-    // Switch to English Medium
-    const engTab = screen.getByRole('tab', { name: /English Medium/i });
-    fireEvent.click(engTab);
-
-    // Search for Bhavna (who is Gujarati)
-    const searchInput = screen.getByPlaceholderText('Search by student name or admission number...');
+    // Inside Class 5 student list, search for Bhavna (who is Gujarati in Class 3)
+    const searchInput = screen.getByPlaceholderText(/Search Class 5 students by name or admission number/i);
     fireEvent.change(searchInput, { target: { value: 'Bhavna' } });
 
-    // Should return 0 results since Bhavna is Gujarati and we are in English workspace
-    expect(screen.getByText('No students match your filters')).toBeInTheDocument();
-    expect(screen.queryByText('Bhavna Shah')).not.toBeInTheDocument();
+    // Should return 0 results inside Class 5
+    expect(screen.getByText(/No students found matching "Bhavna"/i)).toBeInTheDocument();
+    expect(screen.queryByText('Aarav Patel')).not.toBeInTheDocument();
+
+    // Search for Aarav
+    fireEvent.change(searchInput, { target: { value: 'Aarav' } });
+    expect(screen.getByText('Aarav Patel')).toBeInTheDocument();
   });
 
   it('preselects Gujarati Medium in AddStudentModal when opened from Gujarati workspace', () => {
@@ -439,18 +431,20 @@ describe('Students Experience Redesign', () => {
 
   it('preserves student stored medium when editing an existing student', async () => {
     render(
-      <BrowserRouter>
-        <StudentsPage />
-      </BrowserRouter>
+      <MemoryRouter initialEntries={['/students']}>
+        <Routes>
+          <Route path="/students" element={<StudentsPage />} />
+        </Routes>
+      </MemoryRouter>
     );
 
-    // Switch to Gujarati workspace
-    const gujTab = screen.getByRole('tab', { name: /Gujarati Medium/i });
-    fireEvent.click(gujTab);
+    // Switch to English Medium
+    const engTab = screen.getByRole('tab', { name: /English Medium/i });
+    fireEvent.click(engTab);
 
-    // Switch to All Students
-    const allTab = screen.getByRole('tab', { name: /All Students/i });
-    fireEvent.click(allTab);
+    // Click Class 5 card
+    const classCard = screen.getByRole('button', { name: /Class 5/i });
+    fireEvent.click(classCard);
 
     // Open row actions menu for Aarav (English student)
     const actionBtns = screen.getAllByRole('button', { name: /Actions for Aarav Patel/i });
@@ -479,10 +473,14 @@ describe('Students Experience Redesign', () => {
     // Student profile header contains the prominent medium badge
     expect(screen.getByLabelText('English Medium')).toBeInTheDocument();
 
-    // Historical enrollment on Previous Years tab preserves and displays historical medium
-    const prevYearsTab = screen.getByRole('tab', { name: /Previous Years/ });
-    fireEvent.click(prevYearsTab);
-    expect(screen.getByText('Class: Class 4')).toBeInTheDocument();
+    // Historical previous class is displayed on the Overview tab's Previous-Year Outstanding card
+    expect(screen.getAllByText(/Class 4/).length).toBeGreaterThanOrEqual(1);
+
+    // Payments tab contains only Recorded Fee Payments
+    const paymentsTab = screen.getByRole('tab', { name: /Payments/ });
+    fireEvent.click(paymentsTab);
+    expect(screen.getByText('Recorded Fee Payments')).toBeInTheDocument();
+    expect(screen.queryByText('Previous-Year Fee Records')).not.toBeInTheDocument();
   });
 
   it('preserves spreadsheet row medium values and falls back to defaultMedium when empty in validateImportRows', async () => {
@@ -536,28 +534,28 @@ describe('Students Experience Redesign', () => {
     expect(validatedGujaratiDefault[2].medium).toBe('gujarati'); // fallback applied
   });
 
-  it('renders student listings as professional clickable cards by default in responsive grid', () => {
+  it('renders class cards with financial metrics in responsive grid', () => {
     render(
-      <BrowserRouter>
-        <StudentsPage />
-      </BrowserRouter>
+      <MemoryRouter initialEntries={['/students?medium=gujarati']}>
+        <Routes>
+          <Route path="/students" element={<StudentsPage />} />
+        </Routes>
+      </MemoryRouter>
     );
 
-    // Cards view mode is active
-    const cardsBtn = screen.getByRole('button', { name: /Cards view/i });
-    expect(cardsBtn).toBeInTheDocument();
+    // Default Gujarati medium shows Class 3 card
+    const classHeading = screen.getByRole('heading', { name: 'Class 3' });
+    expect(classHeading).toBeInTheDocument();
 
-    // Verify card contents for Aarav Patel
-    expect(screen.getByRole('heading', { name: 'Aarav Patel' })).toBeInTheDocument();
-    expect(screen.getByText('ADM-101')).toBeInTheDocument();
-    expect(screen.getAllByText('Class 5').length).toBeGreaterThan(0);
-    expect(screen.getByText(/ENG · English/i)).toBeInTheDocument();
-    expect(screen.getByText('60% paid')).toBeInTheDocument();
+    // Class card contains financial indicators
+    expect(screen.getAllByText('This Year Pending').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Previous Year Pending').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('View Students').length).toBeGreaterThan(0);
   });
 
-  it('clicking a student card navigates to full student detail page', async () => {
+  it('clicking a class card navigates into class student list and student detail', async () => {
     render(
-      <MemoryRouter initialEntries={['/students']}>
+      <MemoryRouter initialEntries={['/students?medium=english']}>
         <Routes>
           <Route path="/students" element={<StudentsPage />} />
           <Route path="/students/:studentId" element={<StudentDetailPage />} />
@@ -565,71 +563,73 @@ describe('Students Experience Redesign', () => {
       </MemoryRouter>
     );
 
-    // Find Aarav Patel's card (button role or clickable card container)
-    const aaravHeading = screen.getByRole('heading', { name: 'Aarav Patel' });
-    const card = aaravHeading.closest('[role="button"]')!;
-    expect(card).toBeInTheDocument();
+    // Click Class 5 card
+    const classCard = screen.getByRole('button', { name: /Class 5/i });
+    fireEvent.click(classCard);
 
-    // Click the card
-    fireEvent.click(card);
+    // Breadcrumb and student list appear
+    expect(await screen.findByText('Back to Classes')).toBeInTheDocument();
+    expect(screen.getByText('Aarav Patel')).toBeInTheDocument();
+
+    // Click Aarav Patel row
+    fireEvent.click(screen.getByText('Aarav Patel'));
 
     // Canonical StudentDetailPage opens
     expect(await screen.findByText('Current Fee Account')).toBeInTheDocument();
     expect(screen.getByText('Payment Collection Breakdown')).toBeInTheDocument();
-    expect(screen.getByText('Profile & Enrollment Info')).toBeInTheDocument();
-
-    // Header actions in student detail page
-    expect(screen.getAllByRole('button', { name: /Record Payment/i }).length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: /Edit/i })).toBeInTheDocument();
-
-    // Switch to Payments tab inside student detail page
-    const paymentsTab = screen.getByRole('tab', { name: /Payments/i });
-    fireEvent.click(paymentsTab);
-    expect(await screen.findByText('Official fee transactions recorded through the finance ledger')).toBeInTheDocument();
-    expect(screen.getAllByText('₹15,000').length).toBeGreaterThan(0);
-
-    // Switch to Previous Years tab inside student detail page
-    const prevYearsTab = screen.getByRole('tab', { name: /Previous Years/i });
-    fireEvent.click(prevYearsTab);
-    expect(await screen.findByText('Academic Year 2025-26')).toBeInTheDocument();
   });
 
-  it('allows toggling between Cards view and Table view in toolbar', () => {
+  it('allows breadcrumb navigation from student list back to class cards grid', async () => {
     render(
-      <BrowserRouter>
-        <StudentsPage />
-      </BrowserRouter>
+      <MemoryRouter initialEntries={['/students']}>
+        <Routes>
+          <Route path="/students" element={<StudentsPage />} />
+        </Routes>
+      </MemoryRouter>
     );
 
-    // Click Table view
-    const tableBtn = screen.getByRole('button', { name: /Table view/i });
-    fireEvent.click(tableBtn);
+    // Switch to English Medium
+    const engTab = screen.getByRole('tab', { name: /English Medium/i });
+    fireEvent.click(engTab);
 
-    // Table view should now be rendered with Table element
-    expect(screen.getByRole('table')).toBeInTheDocument();
-    expect(screen.getByText('Adm No.')).toBeInTheDocument();
+    // Click Class 5 card
+    const classCard = screen.getByRole('button', { name: /Class 5/i });
+    fireEvent.click(classCard);
 
-    // Switch back to Cards view
-    const cardsBtn = screen.getByRole('button', { name: /Cards view/i });
-    fireEvent.click(cardsBtn);
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    // Inside Class 5 student list
+    expect(await screen.findByText('Back to Classes')).toBeInTheDocument();
+    expect(screen.getByText('Aarav Patel')).toBeInTheDocument();
+
+    // Click Back to Classes
+    fireEvent.click(screen.getByRole('button', { name: /Back to Classes/i }));
+
+    // Back in class cards grid view
+    expect(screen.getByRole('heading', { name: 'Class 5' })).toBeInTheDocument();
+    expect(screen.getByText('English Medium Classes')).toBeInTheDocument();
   });
 
-  it('quick Pay Fee button on student card opens Record Payment modal without bubbling', async () => {
+  it('quick Record Payment in class student list opens payment modal', async () => {
     render(
-      <BrowserRouter>
-        <StudentsPage />
-      </BrowserRouter>
+      <MemoryRouter initialEntries={['/students']}>
+        <Routes>
+          <Route path="/students" element={<StudentsPage />} />
+        </Routes>
+      </MemoryRouter>
     );
 
-    // Find quick "Pay Fee" buttons on cards that have pending fees
-    const payButtons = screen.getAllByRole('button', { name: /Pay Fee/i });
-    expect(payButtons.length).toBeGreaterThan(0);
+    // Switch to English Medium
+    const engTab = screen.getByRole('tab', { name: /English Medium/i });
+    fireEvent.click(engTab);
 
-    // Click quick pay button for Aarav
-    fireEvent.click(payButtons[0]);
+    // Click Class 5 card
+    const classCard = screen.getByRole('button', { name: /Class 5/i });
+    fireEvent.click(classCard);
 
-    // Record Payment modal should open directly
+    // In Class 5 student list, click direct Record Payment button for Aarav
+    const payBtn = await screen.findByRole('button', { name: /Record Payment for Aarav Patel/i });
+    fireEvent.click(payBtn);
+
+    // Modal opens
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('Add Income')).toBeInTheDocument();
   });

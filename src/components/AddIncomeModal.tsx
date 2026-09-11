@@ -21,6 +21,7 @@ import { useStudentStore } from '@/store/student-store';
 import { getStudentFeeSummary } from '@/lib/student-fees';
 import { MEDIUM_LABELS } from '@/types/students';
 import { useTranslation } from '@/lib/i18n';
+import { getPreviousClassName } from '@/utils/class-progression';
 
 type IncomeType = 'tuition' | 'lunch' | 'other';
 
@@ -30,6 +31,7 @@ interface AddIncomeModalProps {
   editEntry?: IncomeEntry;
   presetLateYearId?: string;
   presetStudentEnrollmentId?: string;
+  tuitionOnly?: boolean;
 }
 
 function categoryToType(cat: string): IncomeType {
@@ -38,10 +40,19 @@ function categoryToType(cat: string): IncomeType {
   return 'other';
 }
 
-export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, presetStudentEnrollmentId }: AddIncomeModalProps) {
+export function AddIncomeModal({
+  isOpen,
+  onClose,
+  editEntry,
+  presetLateYearId,
+  presetStudentEnrollmentId,
+  tuitionOnly = false,
+}: AddIncomeModalProps) {
   const { t } = useTranslation();
   const { accounts, academicYears, currentYearId, incomeEntries, addIncome, updateIncome, deleteIncome, getYearForDate, refreshAcademicYears } = useFinanceStore();
   const { students, enrollments } = useStudentStore();
+
+  const isTuitionOnly = tuitionOnly || !!presetStudentEnrollmentId;
 
   const [incomeType, setIncomeType] = useState<IncomeType>('tuition');
   const [amount, setAmount] = useState('');
@@ -63,6 +74,18 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
   const navigate = useNavigate();
 
   const isEdit = !!editEntry;
+  const incomeTypeOptions = useMemo(() => {
+    if (isTuitionOnly) {
+      return [
+        { key: 'tuition' as const, label: 'Tuition Fees', icon: IndianRupee },
+      ];
+    }
+    return [
+      { key: 'tuition' as const, label: 'Tuition Fees', icon: IndianRupee },
+      { key: 'lunch' as const,   label: 'Lunch Fees',   icon: UtensilsCrossed },
+      { key: 'other' as const,   label: 'Investment / Extra', icon: PlusCircle },
+    ];
+  }, [isTuitionOnly]);
   const activeAccounts = useMemo(
     () => accounts.filter((account) => !account.isArchived || account.id === editEntry?.accountId),
     [accounts, editEntry?.accountId],
@@ -91,7 +114,10 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
     const rosterRemaining = enrollments
       .filter((e) => e.academicYearId === year.id && (!selectedStudentId || e.studentId === selectedStudentId))
       .reduce((sum, e) => sum + getStudentFeeSummary(e, incomeEntries, editEntry?.id).pending, 0);
-    return Math.max(yearRemaining, rosterRemaining);
+    const studentCarry = enrollments
+      .filter((e) => (!selectedStudentId || e.studentId === selectedStudentId) && e.academicYearId !== year.id)
+      .reduce((sum, e) => sum + (e.additionalOutstandingAmount || 0), 0);
+    return Math.max(yearRemaining, rosterRemaining, studentCarry);
   }, [editEntry?.id, enrollments, incomeEntries, selectedStudentId]);
 
   const pendingYears = useMemo(() => {
@@ -118,8 +144,8 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
 
   const studentObligations = useMemo(() => {
     if (!selectedStudentId) return [];
-    return enrollments
-      .filter((enrollment) => enrollment.studentId === selectedStudentId)
+    const studentEnrs = enrollments.filter((enrollment) => enrollment.studentId === selectedStudentId);
+    const obligations = studentEnrs
       .map((enrollment) => {
         const year = academicYears.find((candidate) => candidate.id === enrollment.academicYearId);
         const summary = getStudentFeeSummary(enrollment, incomeEntries, editEntry?.id);
@@ -127,14 +153,53 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
       })
       .filter((item): item is { enrollment: typeof item.enrollment; year: NonNullable<typeof item.year>; summary: typeof item.summary } => !!item.year)
       .sort((a, b) => b.year.startDate.getTime() - a.year.startDate.getTime());
-  }, [academicYears, editEntry?.id, enrollments, incomeEntries, selectedStudentId]);
+
+    // If current enrollment has additionalOutstandingAmount > 0 and no separate previous year enrollment exists:
+    const currentObligation = obligations.find((o) => o.year.id === academicYearId);
+    const hasOlderObligation = obligations.some((o) => o.year.id !== academicYearId);
+    if (currentObligation && !hasOlderObligation && currentObligation.enrollment.additionalOutstandingAmount > 0) {
+      const prevYear = academicYears
+        .filter((y) => isPreviousAcademicYear(y, detectedYear || currentObligation.year))
+        .sort((a, b) => {
+          const timeA = a.startDate instanceof Date ? a.startDate.getTime() : new Date(a.startDate).getTime();
+          const timeB = b.startDate instanceof Date ? b.startDate.getTime() : new Date(b.startDate).getTime();
+          return timeB - timeA;
+        })[0];
+      if (prevYear) {
+        const prevPending = Math.min(
+          currentObligation.enrollment.additionalOutstandingAmount,
+          currentObligation.summary.pending
+        );
+        obligations.push({
+          enrollment: {
+            ...currentObligation.enrollment,
+            id: `${currentObligation.enrollment.id}__prev`,
+            academicYearId: prevYear.id,
+            className: getPreviousClassName(currentObligation.enrollment.className),
+            annualFeeAmount: currentObligation.enrollment.additionalOutstandingAmount,
+            additionalOutstandingAmount: 0,
+          },
+          year: prevYear,
+          summary: {
+            ...currentObligation.summary,
+            obligation: currentObligation.enrollment.additionalOutstandingAmount,
+            collected: 0,
+            pending: prevPending,
+            status: prevPending <= 0 ? 'paid' : 'not_paid',
+            collectionPercent: 0,
+          },
+        });
+      }
+    }
+    return obligations;
+  }, [academicYears, editEntry?.id, enrollments, incomeEntries, selectedStudentId, academicYearId, detectedYear]);
 
   const selectedStudentObligation = studentObligations.find((item) => item.enrollment.id === selectedEnrollmentId);
 
   useEffect(() => {
     if (isOpen) {
       if (editEntry) {
-        setIncomeType(categoryToType(editEntry.category));
+        setIncomeType(isTuitionOnly ? 'tuition' : categoryToType(editEntry.category));
         setAmount(editEntry.amount.toString());
         setDate(editEntry.date.toISOString().split('T')[0]);
         setAccountId(editEntry.accountId);
@@ -184,7 +249,7 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
       setErrors({});
       setTagInput('');
     }
-  }, [isOpen, editEntry, presetLateYearId, presetStudentEnrollmentId, activeAccounts, enrollments, academicYears, currentYearId, getYearForDate]);
+  }, [isOpen, editEntry, presetLateYearId, presetStudentEnrollmentId, activeAccounts, enrollments, academicYears, currentYearId, getYearForDate, isTuitionOnly]);
 
   // Automatically select an enrollment when student is set or obligations become available
   useEffect(() => {
@@ -200,12 +265,24 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
 
   useEffect(() => {
     if (!selectedEnrollmentId || !detectedYear) return;
+    if (selectedEnrollmentId.endsWith('__prev')) {
+      const prevYear = academicYears
+        .filter((y) => isPreviousAcademicYear(y, detectedYear))
+        .sort((a, b) => {
+          const timeA = a.startDate instanceof Date ? a.startDate.getTime() : new Date(a.startDate).getTime();
+          const timeB = b.startDate instanceof Date ? b.startDate.getTime() : new Date(b.startDate).getTime();
+          return timeB - timeA;
+        })[0];
+      setIsLateCollection(true);
+      setOriginalYearId(prevYear?.id || '');
+      return;
+    }
     const enrollment = enrollments.find((item) => item.id === selectedEnrollmentId);
     if (!enrollment) return;
     const late = enrollment.academicYearId !== detectedYear.id;
     setIsLateCollection(late);
     setOriginalYearId(late ? enrollment.academicYearId : '');
-  }, [detectedYear, enrollments, selectedEnrollmentId]);
+  }, [detectedYear, enrollments, selectedEnrollmentId, academicYears]);
 
   function handlePaymentMethodChange(method: PaymentMethod) {
     setPaymentMethod(method);
@@ -297,15 +374,18 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
         }
       }
 
+      const isVirtualPrev = selectedEnrollmentId.endsWith('__prev');
+      const actualEnrollmentId = isVirtualPrev ? selectedEnrollmentId.replace('__prev', '') : selectedEnrollmentId;
+
       const payload = {
         type: resolvedCategory(),
         amount: parsePositiveAmount(amount)!,
         date,
         academic_year_id: academicYearId,
         account_id: accountId,
-        is_late_collection: incomeType === 'tuition' ? isLateCollection : false,
-        original_year_id: incomeType === 'tuition' && isLateCollection ? originalYearId : null,
-        student_enrollment_id: incomeType === 'tuition' && selectedEnrollmentId ? selectedEnrollmentId : null,
+        is_late_collection: incomeType === 'tuition' ? (isLateCollection || isVirtualPrev) : false,
+        original_year_id: incomeType === 'tuition' && (isLateCollection || isVirtualPrev) ? (originalYearId || null) : null,
+        student_enrollment_id: incomeType === 'tuition' && actualEnrollmentId ? actualEnrollmentId : null,
         payment_method: incomeType === 'tuition' ? paymentMethod : null,
         payment_reference: incomeType === 'tuition' && paymentReference.trim() ? paymentReference.trim() : null,
         notes: notes || null,
@@ -352,23 +432,21 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
 
           <div className="space-y-4">
 
-            {/* Income Type — 3 toggle boxes */}
+            {/* Income Type */}
             <div>
               <Label className="mb-2 block text-sm">Income Type</Label>
-              <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-3">
-                {(
-                  [
-                    { key: 'tuition', label: 'Tuition Fees', icon: IndianRupee },
-                    { key: 'lunch',   label: 'Lunch Fees',   icon: UtensilsCrossed },
-                    { key: 'other',   label: 'Investment / Extra', icon: PlusCircle },
-                  ] as const
-                ).map(({ key, label, icon: Icon }) => (
+              <div className={cn(
+                'grid gap-2',
+                incomeTypeOptions.length === 1 ? 'grid-cols-1' : 'grid-cols-1 min-[380px]:grid-cols-3'
+              )}>
+                {incomeTypeOptions.map(({ key, label, icon: Icon }) => (
                   <button
                     key={key}
                     type="button"
                     onClick={() => setIncomeType(key)}
                     className={cn(
-                      'flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 px-2 py-3 text-xs font-semibold transition-all',
+                      'flex items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-xs font-semibold transition-all',
+                      incomeTypeOptions.length === 1 ? 'flex-row' : 'flex-col min-[380px]:py-3',
                       incomeType === key
                         ? 'border-primary bg-primary/10 text-primary'
                         : 'border-border bg-card text-muted-foreground hover:border-primary/50'
@@ -397,22 +475,93 @@ export function AddIncomeModal({ isOpen, onClose, editEntry, presetLateYearId, p
                 </> : <>
                   <div className="rounded-md bg-card p-2"><p className="font-medium">{selectedStudent.fullName}</p><p className="text-xs text-muted-foreground">{selectedStudent.admissionNumber || 'No admission number'}</p></div>
                   <div>
-                    <Label>Apply To</Label>
-                    <Select value={selectedEnrollmentId} onValueChange={setSelectedEnrollmentId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select fee balance" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {studentObligations.map(({ enrollment, year, summary }) => (
-                          <SelectItem key={enrollment.id} value={enrollment.id}>
-                            {year.id === academicYearId ? 'Current-Year Fee' : `AY ${year.label} Previous-Year Fee`} ({enrollment.className} · {MEDIUM_LABELS[enrollment.medium]}) — {summary.pending > 0 ? `${formatINR(summary.pending)} pending` : summary.obligation > 0 ? 'Fully Paid' : 'Fee: ₹0'}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label className="block text-xs font-semibold text-foreground mb-1.5">Apply To</Label>
+                    {studentObligations.length > 1 ? (
+                      <div className="mt-1.5 grid grid-cols-1 gap-2">
+                          {studentObligations.map(({ enrollment, year, summary }) => {
+                            const isSelected = enrollment.id === selectedEnrollmentId;
+                            const isCurrentYear = year.id === academicYearId;
+                            return (
+                              <button
+                                key={enrollment.id}
+                                type="button"
+                                onClick={() => setSelectedEnrollmentId(enrollment.id)}
+                                className={cn(
+                                  'w-full text-left rounded-lg border-2 p-2.5 transition-all flex items-center justify-between gap-3',
+                                  isSelected
+                                    ? 'border-primary bg-primary/10 shadow-xs ring-1 ring-primary'
+                                    : 'border-border bg-card hover:border-muted-foreground/40 hover:bg-muted/30',
+                                  summary.pending <= 0 && !isSelected && 'opacity-60'
+                                )}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-semibold text-xs text-foreground">
+                                      {isCurrentYear ? "Current-Year Fee" : `Previous-Year Fee (AY ${year.label})`}
+                                    </span>
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal">
+                                      {enrollment.className}
+                                    </Badge>
+                                    <span className="text-[10px] text-muted-foreground">
+                                      · {MEDIUM_LABELS[enrollment.medium]}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2">
+                                    <span>Total: {formatINR(summary.obligation)}</span>
+                                    <span>·</span>
+                                    <span>Paid: {formatINR(summary.collected)}</span>
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0 font-mono-nums">
+                                  <span className="text-[10px] uppercase font-medium text-muted-foreground block">
+                                    Pending
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      'text-xs font-bold font-mono',
+                                      summary.pending > 0
+                                        ? isCurrentYear
+                                          ? 'text-foreground'
+                                          : 'text-amber-600 dark:text-amber-400'
+                                        : 'text-income'
+                                    )}
+                                  >
+                                    {summary.pending > 0 ? formatINR(summary.pending) : '₹0 (Paid)'}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                    ) : null}
                     {errors.studentEnrollmentId && <p className="mt-1 text-xs text-destructive">{errors.studentEnrollmentId}</p>}
                   </div>
-                  {selectedStudentObligation && <div className="grid grid-cols-2 gap-2 rounded-md bg-primary/5 p-2 text-xs"><span>{selectedStudentObligation.enrollment.className} · {MEDIUM_LABELS[selectedStudentObligation.enrollment.medium]}</span><span className="text-right font-mono font-semibold">{formatINR(selectedStudentObligation.summary.pending)} pending</span></div>}
+                  {selectedStudentObligation && (
+                    <div className="flex items-center justify-between rounded-md bg-muted/40 border p-2.5 text-xs">
+                      <div>
+                        <span className="font-semibold text-foreground block">
+                          {selectedStudentObligation.year.id === academicYearId
+                            ? 'Current-Year Fee'
+                            : `Previous-Year Fee (AY ${selectedStudentObligation.year.label})`}
+                          {' — '}{selectedStudentObligation.enrollment.className}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          Total: {formatINR(selectedStudentObligation.summary.obligation)} · Paid: {formatINR(selectedStudentObligation.summary.collected)}
+                        </span>
+                      </div>
+                      {selectedStudentObligation.summary.pending > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setAmount(String(selectedStudentObligation.summary.pending))}
+                          className="text-[11px] font-semibold text-primary hover:underline ml-2 shrink-0"
+                        >
+                          Fill pending: {formatINR(selectedStudentObligation.summary.pending)}
+                        </button>
+                      ) : (
+                        <span className="text-income font-medium shrink-0 ml-2">Fully Paid</span>
+                      )}
+                    </div>
+                  )}
                 </>}
               </div>
             )}

@@ -262,14 +262,26 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
   },
 
   init: async (force = false, targetUserId?: string) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const currentUserId = targetUserId || user?.id || null;
+    let currentUserId = targetUserId || null;
+    if (!currentUserId) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        currentUserId = session?.user?.id || null;
+        if (!currentUserId) {
+          const { data: { user } } = await supabase.auth.getUser();
+          currentUserId = user?.id || null;
+        }
+      } catch {
+        currentUserId = null;
+      }
+    }
+
     if (!currentUserId) {
       get().reset();
       return;
     }
 
-    if (get().isInitialized && get().initializedForUserId === currentUserId && !force) {
+    if (get().isInitialized && !get().error && get().initializedForUserId === currentUserId && !force) {
       return;
     }
 
@@ -278,93 +290,105 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     }
 
     set({ isLoading: true, error: null });
-    try {
-      const [yearsRes, accRes, incRes, expRes, trRes, recRes, recoverablesRes] = await Promise.all([
-        academicYearsService.getAll(),
-        accountsService.getAllIncludingArchived(),
-        incomeService.getAll(),
-        expensesService.getAll(),
-        transfersService.getAll(),
-        recurringService.getAll(),
-        recoverablesService.getAll(),
-      ]);
 
-      const loadError = yearsRes.error || accRes.error || incRes.error || expRes.error || trRes.error || recRes.error || recoverablesRes.error;
-      if (loadError) throw loadError;
+    const maxRetries = 2;
+    let lastError: unknown = null;
 
-      const years = (yearsRes.data || []).map(mapAcademicYear);
-      const accounts = (accRes.data || []).map(mapAccount);
-      const incomeEntries = (incRes.data || []).map(mapIncome);
-      const expenseEntries = (expRes.data || []).map(mapExpense);
-      const transfers = (trRes.data || []).map(mapTransfer);
-      const recurringTemplates = (recRes.data || []).map(mapRecurring);
-      const recoverables = (recoverablesRes.recoverables || []).map(mapRecoverable);
-      const recoverableRepayments = (recoverablesRes.repayments || []).map(mapRepayment);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const [yearsRes, accRes, incRes, expRes, trRes, recRes, recoverablesRes] = await Promise.all([
+          academicYearsService.getAll(),
+          accountsService.getAllIncludingArchived(),
+          incomeService.getAll(),
+          expensesService.getAll(),
+          transfersService.getAll(),
+          recurringService.getAll(),
+          recoverablesService.getAll(),
+        ]);
 
-      const today = new Date();
-      const activeYear = findAcademicYearForDate(years, today);
-      const currentYearId = activeYear?.id || '';
+        const loadError = yearsRes.error || accRes.error || incRes.error || expRes.error || trRes.error || recRes.error || recoverablesRes.error;
+        if (loadError) throw loadError;
 
-      // Check pending recurring
-      const currentMonth = today.getMonth();
-      const currentFullYear = today.getFullYear();
-      const pendingRecurringItems: PendingRecurringItem[] = [];
+        const years = (yearsRes.data || []).map(mapAcademicYear);
+        const accounts = (accRes.data || []).map(mapAccount);
+        const incomeEntries = (incRes.data || []).map(mapIncome);
+        const expenseEntries = (expRes.data || []).map(mapExpense);
+        const transfers = (trRes.data || []).map(mapTransfer);
+        const recurringTemplates = (recRes.data || []).map(mapRecurring);
+        const recoverables = (recoverablesRes.recoverables || []).map(mapRecoverable);
+        const recoverableRepayments = (recoverablesRes.repayments || []).map(mapRepayment);
 
-      for (const template of recurringTemplates) {
-        if (!template.isActive) continue;
+        const today = new Date();
+        const activeYear = findAcademicYearForDate(years, today);
+        const currentYearId = activeYear?.id || '';
 
-        const templateEntries = expenseEntries
-          .filter((entry) => entry.isRecurringInstance && entry.recurringTemplateId === template.id)
-          .sort((a, b) => b.date.getTime() - a.date.getTime());
-        const latestRecordedDate = templateEntries[0]?.date || null;
-        const effectiveLastDate = template.lastGeneratedDate && latestRecordedDate
-          ? (template.lastGeneratedDate > latestRecordedDate ? template.lastGeneratedDate : latestRecordedDate)
-          : template.lastGeneratedDate || latestRecordedDate;
+        // Check pending recurring
+        const currentMonth = today.getMonth();
+        const currentFullYear = today.getFullYear();
+        const pendingRecurringItems: PendingRecurringItem[] = [];
 
-        const hasThisMonth = expenseEntries.some(
-          (e) =>
-            e.isRecurringInstance &&
-            e.recurringTemplateId === template.id &&
-            e.date.getMonth() === currentMonth &&
-            e.date.getFullYear() === currentFullYear
-        );
+        for (const template of recurringTemplates) {
+          if (!template.isActive) continue;
 
-        if (!hasThisMonth && isRecurringDue(template.recurrenceInterval, effectiveLastDate, today)) {
-          const lastAmount = templateEntries[0]?.amount || template.defaultAmount;
-          pendingRecurringItems.push({ template, lastAmount });
+          const templateEntries = expenseEntries
+            .filter((entry) => entry.isRecurringInstance && entry.recurringTemplateId === template.id)
+            .sort((a, b) => b.date.getTime() - a.date.getTime());
+          const latestRecordedDate = templateEntries[0]?.date || null;
+          const effectiveLastDate = template.lastGeneratedDate && latestRecordedDate
+            ? (template.lastGeneratedDate > latestRecordedDate ? template.lastGeneratedDate : latestRecordedDate)
+            : template.lastGeneratedDate || latestRecordedDate;
+
+          const hasThisMonth = expenseEntries.some(
+            (e) =>
+              e.isRecurringInstance &&
+              e.recurringTemplateId === template.id &&
+              e.date.getMonth() === currentMonth &&
+              e.date.getFullYear() === currentFullYear
+          );
+
+          if (!hasThisMonth && isRecurringDue(template.recurrenceInterval, effectiveLastDate, today)) {
+            const lastAmount = templateEntries[0]?.amount || template.defaultAmount;
+            pendingRecurringItems.push({ template, lastAmount });
+          }
+        }
+
+        // Restore dark mode
+        const savedDark = localStorage.getItem('darkMode') === '1';
+        if (savedDark) document.documentElement.classList.add('dark');
+
+        set({
+          academicYears: years,
+          accounts,
+          incomeEntries,
+          expenseEntries,
+          transfers,
+          recurringTemplates,
+          recoverables,
+          recoverableRepayments,
+          currentYearId,
+          isSetupComplete: accounts.length > 0 || years.length > 0,
+          isLoading: false,
+          isInitialized: true,
+          initializedForUserId: currentUserId,
+          error: null,
+          isDarkMode: savedDark,
+          pendingRecurringItems,
+        });
+        return;
+      } catch (err) {
+        lastError = err;
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 350));
         }
       }
-
-      // Restore dark mode
-      const savedDark = localStorage.getItem('darkMode') === '1';
-      if (savedDark) document.documentElement.classList.add('dark');
-
-      set({
-        academicYears: years,
-        accounts,
-        incomeEntries,
-        expenseEntries,
-        transfers,
-        recurringTemplates,
-        recoverables,
-        recoverableRepayments,
-        currentYearId,
-        isSetupComplete: accounts.length > 0 || years.length > 0,
-        isLoading: false,
-        isInitialized: true,
-        initializedForUserId: currentUserId,
-        error: null,
-        isDarkMode: savedDark,
-        pendingRecurringItems,
-      });
-    } catch (err) {
-      set({
-        isLoading: false,
-        isInitialized: true,
-        initializedForUserId: currentUserId,
-        error: err instanceof Error ? err.message : 'Failed to load data',
-      });
     }
+
+    set({
+      isLoading: false,
+      isInitialized: false,
+      initializedForUserId: currentUserId,
+      error: lastError instanceof Error ? lastError.message : 'Failed to load data',
+    });
   },
 
   addIncome: async (data) => {

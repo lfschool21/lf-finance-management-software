@@ -3,6 +3,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { signIn, getSession } from '@/services/auth';
 import { startDemo } from '@/services/demo';
 import { isDemoUser } from '@/lib/demo-mode';
+import { useFinanceStore } from '@/store/finance-store';
+import { useStudentStore } from '@/store/student-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { GraduationCap, Loader2, PlayCircle, Eye, EyeOff } from 'lucide-react';
@@ -35,6 +37,9 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
+
+    useFinanceStore.getState().reset();
+    useStudentStore.getState().reset();
 
     // Direct redirect to dashboard for existing account
     navigate('/', { replace: true });

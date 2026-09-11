@@ -12,6 +12,7 @@ import type { Student, StudentEnrollment, StudentMedium } from '@/types/students
 import { parseNonNegativeAmount } from '@/lib/finance-domain';
 import { toast } from '@/hooks/use-toast';
 import { ChevronDown, ChevronUp, Loader2, Info } from 'lucide-react';
+import { getPreviousClassName } from '@/utils/class-progression';
 
 const CLASS_OPTIONS = [
   'Playgroup',
@@ -39,7 +40,7 @@ export function AddStudentModal({
   defaultMedium,
 }: AddStudentModalProps) {
   const { academicYears, currentYearId, refreshAcademicYears } = useFinanceStore();
-  const { saveStudent } = useStudentStore();
+  const { enrollments, saveStudent } = useStudentStore();
 
   const [name, setName] = useState('');
   const [admission, setAdmission] = useState('');
@@ -61,12 +62,26 @@ export function AddStudentModal({
     if (!open) return;
     setName(student?.fullName || '');
     setAdmission(student?.admissionNumber || '');
-    setYearId(enrollment?.academicYearId || defaultYearId || currentYearId);
+    const activeYearId = enrollment?.academicYearId || defaultYearId || currentYearId;
+    setYearId(activeYearId);
     setClassName(enrollment?.className || '');
     // If editing existing enrollment, preserve its stored medium! If new, use contextual default.
     setMedium(enrollment?.medium ?? defaultMedium ?? 'gujarati');
     setAnnualFee(enrollment?.annualFeeAmount !== undefined ? enrollment.annualFeeAmount.toString() : '');
-    setAdditional(enrollment?.additionalOutstandingAmount !== undefined ? enrollment.additionalOutstandingAmount.toString() : '');
+
+    const targetStudentId = student?.id;
+    const existingPrevEnr = targetStudentId
+      ? enrollments.find(
+          (e) => e.studentId === targetStudentId && e.academicYearId !== activeYearId
+        )
+      : null;
+
+    const initialAdditional = existingPrevEnr
+      ? (existingPrevEnr.annualFeeAmount ? String(existingPrevEnr.annualFeeAmount) : '')
+      : (enrollment?.additionalOutstandingAmount !== undefined && enrollment.additionalOutstandingAmount > 0
+          ? enrollment.additionalOutstandingAmount.toString()
+          : '');
+    setAdditional(initialAdditional);
 
     const hasOpening =
       (enrollment?.openingCollectedCash || 0) > 0 ||
@@ -78,7 +93,7 @@ export function AddStudentModal({
     setOpeningOther(enrollment?.openingCollectedOther ? enrollment.openingCollectedOther.toString() : '');
     setShowOpeningHistory(hasOpening);
     setNotes(student?.notes || '');
-  }, [open, student, enrollment, defaultYearId, defaultMedium, currentYearId]);
+  }, [open, student, enrollment, defaultYearId, defaultMedium, currentYearId, enrollments]);
 
   async function handleSave() {
     const fee = parseNonNegativeAmount(annualFee);
@@ -140,6 +155,71 @@ export function AddStudentModal({
           notes: enrollment?.notes || null,
         }
       );
+
+      // Synchronize with previous academic year record if student exists
+      const targetStudentId = student?.id;
+      if (targetStudentId) {
+        const existingPrevEnr = enrollments.find(
+          (e) => e.studentId === targetStudentId && e.academicYearId !== yearId
+        );
+        const previousYear = academicYears
+          .filter((y) => y.id !== yearId)
+          .sort((a, b) => {
+            const timeA = a.startDate instanceof Date ? a.startDate.getTime() : new Date(a.startDate).getTime();
+            const timeB = b.startDate instanceof Date ? b.startDate.getTime() : new Date(b.startDate).getTime();
+            return timeB - timeA;
+          })[0];
+
+        if (existingPrevEnr) {
+          await saveStudent(
+            {
+              id: targetStudentId,
+              admission_number: admission.trim() || null,
+              full_name: name.trim(),
+              status: student?.status || 'active',
+              notes: notes.trim() || null,
+            },
+            {
+              id: existingPrevEnr.id,
+              academic_year_id: existingPrevEnr.academicYearId,
+              class_name: existingPrevEnr.className || getPreviousClassName(className.trim()),
+              medium: existingPrevEnr.medium || medium,
+              annual_fee_amount: extra,
+              additional_outstanding_amount: 0,
+              opening_collected_cash: existingPrevEnr.openingCollectedCash || 0,
+              opening_collected_upi: existingPrevEnr.openingCollectedUpi || 0,
+              opening_collected_other: existingPrevEnr.openingCollectedOther || 0,
+              opening_snapshot_date: existingPrevEnr.openingSnapshotDate || null,
+              status: 'active',
+              notes: existingPrevEnr.notes || null,
+            }
+          );
+        } else if (extra > 0 && previousYear) {
+          await saveStudent(
+            {
+              id: targetStudentId,
+              admission_number: admission.trim() || null,
+              full_name: name.trim(),
+              status: student?.status || 'active',
+              notes: notes.trim() || null,
+            },
+            {
+              academic_year_id: previousYear.id,
+              class_name: getPreviousClassName(className.trim()),
+              medium,
+              annual_fee_amount: extra,
+              additional_outstanding_amount: 0,
+              opening_collected_cash: 0,
+              opening_collected_upi: 0,
+              opening_collected_other: 0,
+              opening_snapshot_date: null,
+              status: 'active',
+              notes: 'Carried forward from last year',
+            }
+          );
+        }
+      }
+
       await refreshAcademicYears();
 
       toast({ title: student ? 'Student updated successfully' : 'Student added successfully' });

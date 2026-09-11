@@ -36,6 +36,7 @@ interface StudentTableProps {
   onSort: (field: SortField) => void;
   onSelectStudent: (studentId: string) => void;
   onRecordPayment: (enrollmentId: string) => void;
+  onRecordPreviousPayment?: (row: StudentRowData) => void;
   onEditStudent: (student: Student, enrollment: StudentEnrollment) => void;
   page: number;
   pageSize: number;
@@ -51,6 +52,7 @@ export function StudentTable({
   onSort,
   onSelectStudent,
   onRecordPayment,
+  onRecordPreviousPayment,
   onEditStudent,
   page,
   pageSize,
@@ -188,19 +190,21 @@ export function StudentTable({
           </TableHeader>
 
           <tbody className="divide-y font-mono-nums">
-            {rows.map(({ student, enrollment, fees, previous }) => (
-              <tr
-                key={enrollment.id}
-                onClick={() => onSelectStudent(student.id)}
-                className="group cursor-pointer transition-colors hover:bg-muted/40 focus-within:bg-muted/40"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onSelectStudent(student.id);
-                  }
-                }}
-              >
+            {rows.map((row) => {
+              const { student, enrollment, fees, previous } = row;
+              return (
+                <tr
+                  key={enrollment.id}
+                  onClick={() => onSelectStudent(student.id)}
+                  className="group cursor-pointer transition-colors hover:bg-muted/40 focus-within:bg-muted/40"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelectStudent(student.id);
+                    }
+                  }}
+                >
                 {/* Admission Number */}
                 <TableCell className="py-3.5 font-mono text-xs font-medium text-muted-foreground">
                   {student.admissionNumber || '—'}
@@ -286,6 +290,15 @@ export function StudentTable({
                         <IndianRupee className="h-3.5 w-3.5 text-income" />
                         <span>Record Payment</span>
                       </DropdownMenuItem>
+                      {previous > 0 && onRecordPreviousPayment && (
+                        <DropdownMenuItem
+                          onClick={() => onRecordPreviousPayment(row)}
+                          className="gap-2 cursor-pointer text-warning focus:text-warning"
+                        >
+                          <IndianRupee className="h-3.5 w-3.5 text-warning" />
+                          <span>Record Previous-Year Payment</span>
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         onClick={() => onEditStudent(student, enrollment)}
                         className="gap-2 cursor-pointer"
@@ -297,7 +310,8 @@ export function StudentTable({
                   </DropdownMenu>
                 </TableCell>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </Table>
       </div>

@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { useTranslation } from '@/lib/i18n';
 import type { AcademicYear } from '@/types/finance';
+import type { StudentMedium } from '@/types/students';
 
 interface StudentPageHeaderProps {
   academicYears: AcademicYear[];
@@ -27,6 +28,7 @@ interface StudentPageHeaderProps {
   onDownloadTemplate: () => void;
   onRemoveAllStudents?: () => void;
   totalStudentsCount?: number;
+  activeMedium?: 'all' | StudentMedium;
 }
 
 export function StudentPageHeader({
@@ -38,14 +40,21 @@ export function StudentPageHeader({
   onDownloadTemplate,
   onRemoveAllStudents,
   totalStudentsCount = 0,
+  activeMedium,
 }: StudentPageHeaderProps) {
   const { t } = useTranslation();
+
+  const mediumSuffix = activeMedium === 'gujarati'
+    ? ' — Gujarati Medium'
+    : activeMedium === 'english'
+    ? ' — English Medium'
+    : '';
 
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-          {t('studentsTitle')}
+          {t('studentsTitle')}{mediumSuffix}
         </h1>
         <p className="text-sm text-muted-foreground">{t('studentsSubtitle')}</p>
       </div>

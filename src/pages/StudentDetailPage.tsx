@@ -7,9 +7,7 @@ import {
   MoreVertical,
   Archive,
   Calendar,
-  AlertTriangle,
   History,
-  FileText,
   CreditCard,
   Plus,
   CheckCircle2,
@@ -23,6 +21,7 @@ import { getStudentFeeSummary, getStudentPreviousPending } from '@/lib/student-f
 import type { IncomeEntry } from '@/types/finance';
 import { MEDIUM_LABELS, type StudentEnrollment } from '@/types/students';
 import { formatINR } from '@/utils/currency';
+import { getPreviousClassName } from '@/utils/class-progression';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -49,6 +48,8 @@ import { StudentMediumBadge } from '@/components/students/StudentMediumBadge';
 import { AddIncomeModal } from '@/components/AddIncomeModal';
 import { AddStudentModal } from '@/components/AddStudentModal';
 import { AddHistoricalFeeModal } from '@/components/students/AddHistoricalFeeModal';
+import { RecordPreviousPaymentModal } from '@/components/students/RecordPreviousPaymentModal';
+import { RecordCurrentPaymentModal } from '@/components/students/RecordCurrentPaymentModal';
 import { toast } from '@/hooks/use-toast';
 
 export default function StudentDetailPage() {
@@ -57,7 +58,7 @@ export default function StudentDetailPage() {
   const { students, enrollments, archiveStudent, deleteEnrollment } = useStudentStore();
   const { currentYearId, academicYears, incomeEntries, accounts, deleteIncome } = useFinanceStore();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'payments' | 'previous-years'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'payments'>('overview');
   const [paymentEnrollmentId, setPaymentEnrollmentId] = useState<string | undefined>(undefined);
   const [editingIncomeEntry, setEditingIncomeEntry] = useState<IncomeEntry | null>(null);
   const [deletingIncomeEntry, setDeletingIncomeEntry] = useState<IncomeEntry | null>(null);
@@ -67,6 +68,8 @@ export default function StudentDetailPage() {
   const [isDeletingEnrollment, setIsDeletingEnrollment] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showHistoricalModal, setShowHistoricalModal] = useState(false);
+  const [showPreviousPaymentModal, setShowPreviousPaymentModal] = useState(false);
+  const [selectedPreviousEnrollment, setSelectedPreviousEnrollment] = useState<StudentEnrollment | null>(null);
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
@@ -134,23 +137,64 @@ export default function StudentDetailPage() {
     );
   }, [studentEnrollments, currentYearId]);
 
+  // Current year fee summary
+  const currentSummary = useMemo(() => {
+    if (!current) return null;
+    return getStudentFeeSummary(current, incomeEntries);
+  }, [current, incomeEntries]);
+
   // Historical enrollments (all except current)
   const historicalEnrollments = useMemo(() => {
     if (!current) return [];
-    return studentEnrollments
+    const separate = studentEnrollments
       .filter((item) => item.id !== current.id)
       .map((enrollment) => ({
         enrollment,
         year: academicYears.find((y) => y.id === enrollment.academicYearId),
         summary: getStudentFeeSummary(enrollment, incomeEntries),
       }));
-  }, [studentEnrollments, current, academicYears, incomeEntries]);
 
-  // Current year fee summary
-  const currentSummary = useMemo(() => {
-    if (!current) return null;
-    return getStudentFeeSummary(current, incomeEntries);
-  }, [current, incomeEntries]);
+    if (separate.length === 0 && current.additionalOutstandingAmount > 0) {
+      const prevYear = academicYears
+        .filter((y) => y.id !== current.academicYearId)
+        .sort((a, b) => {
+          const timeA = a.startDate instanceof Date ? a.startDate.getTime() : new Date(a.startDate).getTime();
+          const timeB = b.startDate instanceof Date ? b.startDate.getTime() : new Date(b.startDate).getTime();
+          return timeB - timeA;
+        })[0];
+      if (prevYear) {
+        const prevPending = Math.min(
+          current.additionalOutstandingAmount,
+          currentSummary ? currentSummary.pending : current.additionalOutstandingAmount
+        );
+        separate.push({
+          enrollment: {
+            ...current,
+            id: current.id,
+            academicYearId: prevYear.id,
+            className: getPreviousClassName(current.className),
+            annualFeeAmount: current.additionalOutstandingAmount,
+            additionalOutstandingAmount: 0,
+          },
+          year: prevYear,
+          summary: {
+            obligation: current.additionalOutstandingAmount,
+            collected: 0,
+            openingCollected: 0,
+            recordedCollected: 0,
+            pending: prevPending,
+            status: prevPending <= 0 ? 'paid' : 'not_paid',
+            collectionPercent: 0,
+            cash: 0,
+            upi: 0,
+            other: 0,
+            unknown: 0,
+          },
+        });
+      }
+    }
+    return separate;
+  }, [studentEnrollments, current, academicYears, incomeEntries, currentSummary]);
 
   const currentYear = useMemo(() => {
     if (!current) return null;
@@ -162,6 +206,60 @@ export default function StudentDetailPage() {
     if (!student || !current) return 0;
     return getStudentPreviousPending(student.id, current.academicYearId, enrollments, incomeEntries);
   }, [student, current, enrollments, incomeEntries]);
+
+  // Previous-year accounting separation metrics
+  const primaryHistorical = historicalEnrollments[0] || null;
+  const previousClass = primaryHistorical?.enrollment.className || getPreviousClassName(current?.className);
+  const previousObligation = primaryHistorical
+    ? primaryHistorical.summary.obligation
+    : (current?.additionalOutstandingAmount || 0);
+  const previousRecovered = primaryHistorical
+    ? primaryHistorical.summary.collected
+    : 0;
+  const previousPending = primaryHistorical
+    ? primaryHistorical.summary.pending
+    : (current?.additionalOutstandingAmount || 0);
+  const previousCollectionPercent = previousObligation > 0
+    ? Math.min(100, Math.round((previousRecovered / previousObligation) * 100))
+    : 0;
+  const hasPreviousDues = Boolean(previousObligation > 0 || totalPreviousPending > 0);
+
+  const previousEnrollmentObj = useMemo(() => {
+    if (primaryHistorical?.enrollment) return primaryHistorical.enrollment;
+    const currentStart = currentYear?.startDate instanceof Date
+      ? currentYear.startDate.getTime()
+      : currentYear ? new Date(currentYear.startDate).getTime() : 0;
+    const prevYear = academicYears
+      .filter((y) => {
+        if (y.id === current?.academicYearId) return false;
+        if (currentStart) {
+          const yStart = y.startDate instanceof Date ? y.startDate.getTime() : new Date(y.startDate).getTime();
+          return yStart < currentStart;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const timeA = a.startDate instanceof Date ? a.startDate.getTime() : new Date(a.startDate).getTime();
+        const timeB = b.startDate instanceof Date ? b.startDate.getTime() : new Date(b.startDate).getTime();
+        return timeB - timeA;
+      })[0];
+    return {
+      ...current!,
+      id: current?.id || '',
+      academicYearId: prevYear?.id || '',
+      className: previousClass,
+      annualFeeAmount: current?.additionalOutstandingAmount || 0,
+      additionalOutstandingAmount: 0,
+    };
+  }, [primaryHistorical, academicYears, current, currentYear, previousClass]);
+
+  // Current year fee calculations strictly separated from previous-year dues
+  const currentYearFee = current?.annualFeeAmount || 0;
+  const currentYearPaid = currentSummary?.collected || 0;
+  const currentYearPending = Math.max(0, currentYearFee - currentYearPaid);
+  const currentYearProgress = currentYearFee > 0
+    ? Math.min(100, Math.round((currentYearPaid / currentYearFee) * 100))
+    : 0;
 
   // Payments applied to this student
   const payments = useMemo(() => {
@@ -257,6 +355,18 @@ export default function StudentDetailPage() {
               <span>Edit Student</span>
             </Button>
 
+            {previousPending > 0 && (
+              <Button
+                size="sm"
+                onClick={() => setShowPreviousPaymentModal(true)}
+                className="h-9 text-xs gap-1.5 shadow-sm bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-500 dark:hover:bg-amber-600"
+              >
+                <IndianRupee className="h-3.5 w-3.5" />
+                <span className="sr-only">Pay Last Year's Dues </span>
+                <span>Record Previous-Year Payment</span>
+              </Button>
+            )}
+
             <Button
               size="sm"
               onClick={() => setPaymentEnrollmentId(current.id)}
@@ -295,121 +405,333 @@ export default function StudentDetailPage() {
         </div>
       </header>
 
-      {/* 3-Tab Information Architecture: Overview | Payments | Previous Years */}
+      {/* 2-Tab Information Architecture: Overview | Payments */}
       <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as typeof activeTab)} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 max-w-md h-9">
+        <TabsList className="grid w-full grid-cols-2 max-w-md h-9">
           <TabsTrigger value="overview" onPointerDown={() => setActiveTab('overview')} onClick={() => setActiveTab('overview')} className="text-xs">Overview</TabsTrigger>
           <TabsTrigger value="payments" onPointerDown={() => setActiveTab('payments')} onClick={() => setActiveTab('payments')} className="text-xs">
             Payments {payments.length > 0 && `(${payments.length})`}
-          </TabsTrigger>
-          <TabsTrigger value="previous-years" onPointerDown={() => setActiveTab('previous-years')} onClick={() => setActiveTab('previous-years')} className="text-xs">
-            Previous Years {historicalEnrollments.length > 0 && `(${historicalEnrollments.length})`}
           </TabsTrigger>
         </TabsList>
 
         {/* TAB 1: OVERVIEW */}
         <TabsContent value="overview" className="space-y-4 outline-none">
-          {/* Previous-Year Warning Callout if dues exist */}
-          {totalPreviousPending > 0 && (
-            <div className="flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/20 text-warning shrink-0">
-                  <AlertTriangle className="h-4 w-4" />
+
+          {/* Side-by-Side Fee Management Cards: This Year vs Last Year */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Card 1: This Year's Fee Account */}
+            <div className="rounded-xl border bg-card p-4 sm:p-5 shadow-sm flex flex-col justify-between space-y-4">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-primary">This Year</span>
+                      <Badge variant="outline" className="text-[10px] py-0 h-4">
+                        Class {current.className}
+                      </Badge>
+                    </div>
+                    <h2 className="text-sm font-semibold text-foreground mt-0.5">
+                      Academic Year {currentYear?.label || '—'}
+                    </h2>
+                    <span className="text-[11px] font-medium text-muted-foreground block">
+                      Current Fee Account
+                    </span>
+                  </div>
+                  <StudentFeeBadge status={currentYearPending <= 0 ? 'paid' : currentYearPaid > 0 ? 'partially_paid' : 'not_paid'} />
                 </div>
-                <div>
-                  <p className="text-xs font-semibold text-foreground">
-                    Last Year's Pending Fees:{' '}
-                    <span className="font-mono text-warning">{formatINR(totalPreviousPending)}</span>
+
+                {/* Numbers: Total Fee | Paid | Pending */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-4 font-mono-nums">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Current-Year Fee</p>
+                    <p className="money-fit mt-1 font-mono text-base sm:text-xl font-bold text-foreground">
+                      {formatINR(currentYearFee)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5 font-sans">
+                      Class: {current.className}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Amount Paid</p>
+                    <p className="money-fit mt-1 font-mono text-base sm:text-xl font-bold text-income">
+                      {formatINR(currentYearPaid)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5 font-sans">
+                      {currentYearProgress}% paid
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Amount Pending</p>
+                    <p className={`money-fit mt-1 font-mono text-base sm:text-xl font-bold ${currentYearPending > 0 ? 'text-warning' : 'text-income'}`}>
+                      {currentYearPending > 0 ? formatINR(currentYearPending) : '₹0 (Clear)'}
+                    </p>
+                    {currentYearPending <= 0 && (
+                      <p className="text-[10px] text-income mt-0.5 font-sans flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3 inline" /> Fully settled
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="space-y-1 pt-1">
+                  <div className="flex justify-between text-[11px] text-muted-foreground font-medium">
+                    <span>This Year Progress</span>
+                    <span>{currentYearProgress}%</span>
+                  </div>
+                  <Progress value={currentYearProgress} className="h-2" />
+                </div>
+
+                {/* Payment Breakdown */}
+                <div className="border-t pt-2.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                    Payment Collection Breakdown
                   </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    This student has unpaid balances carried forward from previous academic years.
-                  </p>
+                  <div className="grid grid-cols-2 gap-2.5 text-xs font-mono-nums">
+                    <div className="rounded-lg border bg-muted/20 p-2">
+                      <span className="text-[11px] text-muted-foreground block">Cash</span>
+                      <span className="font-mono font-medium">{formatINR(currentSummary.cash)}</span>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-2">
+                      <span className="text-[11px] text-muted-foreground block">UPI</span>
+                      <span className="font-mono font-medium">{formatINR(currentSummary.upi)}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setActiveTab('previous-years')}
-                className="h-8 text-xs border-warning/30 hover:bg-warning/20 shrink-0 self-start sm:self-auto"
-              >
-                View Previous Years
-              </Button>
-            </div>
-          )}
 
-          {/* Current Fee Account Card */}
-          <div className="rounded-xl border bg-card p-4 sm:p-5 shadow-sm space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+              {/* Action */}
+              <div className="pt-2 border-t">
+                <Button
+                  size="sm"
+                  onClick={() => setPaymentEnrollmentId(current.id)}
+                  className="w-full h-8 text-xs gap-1.5 font-medium"
+                >
+                  <IndianRupee className="h-3.5 w-3.5" />
+                  <span>Record Current-Year Payment</span>
+                </Button>
+              </div>
+            </div>
+
+            {/* Card 2: Previous-Year Pending Fee */}
+            <div className="rounded-xl border bg-card p-4 sm:p-5 shadow-sm flex flex-col justify-between space-y-4">
+              {hasPreviousDues ? (
+                <>
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold uppercase tracking-wider text-warning">Previous-Year Outstanding</span>
+                          <Badge variant="outline" className="text-[10px] py-0 h-4 border-warning/40 bg-warning/10 text-warning">
+                            {previousClass}
+                          </Badge>
+                        </div>
+                        <h2 className="text-sm font-semibold text-foreground mt-0.5">
+                          Previous Class: {previousClass}
+                        </h2>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 font-sans">
+                          {`Last Year's Pending: ${formatINR(previousPending)}`}
+                        </p>
+                      </div>
+                      {previousPending <= 0 ? (
+                        <Badge variant="outline" className="border-income/30 bg-income/10 text-income text-xs">
+                          <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Dues Cleared
+                        </Badge>
+                      ) : (
+                        <StudentFeeBadge status={previousRecovered > 0 ? 'partially_paid' : 'not_paid'} />
+                      )}
+                    </div>
+
+                    {/* Numbers: Original Due | Recovered | Pending */}
+                    <div className="grid grid-cols-3 gap-2 sm:gap-4 font-mono-nums">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Original Outstanding</p>
+                        <p className="money-fit mt-1 font-mono text-base sm:text-xl font-bold text-foreground">
+                          {formatINR(previousObligation)}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 font-sans">
+                          Class: {previousClass}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Paid So Far</p>
+                        <p className="money-fit mt-1 font-mono text-base sm:text-xl font-bold text-income">
+                          {formatINR(previousRecovered)}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 font-sans">
+                          {previousCollectionPercent}% recovered
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Remaining Pending</p>
+                        <p className={`money-fit mt-1 font-mono text-base sm:text-xl font-bold ${previousPending > 0 ? 'text-warning' : 'text-income'}`}>
+                          {previousPending > 0 ? formatINR(previousPending) : '₹0 (Clear)'}
+                        </p>
+                        {previousPending <= 0 && (
+                          <p className="text-[10px] text-income mt-0.5 font-sans flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3 inline" /> Dues cleared
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="space-y-1 pt-1">
+                      <div className="flex justify-between text-[11px] text-muted-foreground font-medium">
+                        <span>Recovery Progress</span>
+                        <span>{previousCollectionPercent}%</span>
+                      </div>
+                      <Progress value={previousCollectionPercent} className="h-2" />
+                    </div>
+
+                    {previousPending <= 0 ? (
+                      <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                        <span>Previous-year dues cleared</span>
+                      </div>
+                    ) : (
+                      <div className="border-t pt-2 text-xs text-muted-foreground">
+                        <span>Balance carried forward from previous academic session.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions for Last Year */}
+                  <div className="pt-2 border-t flex flex-wrap items-center gap-2">
+                    {previousPending > 0 ? (
+                      <Button
+                        size="sm"
+                        onClick={() => setShowPreviousPaymentModal(true)}
+                        className="flex-1 h-8 text-xs gap-1.5 font-medium bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-500 dark:hover:bg-amber-600"
+                      >
+                        <IndianRupee className="h-3.5 w-3.5" />
+                        <span className="sr-only">Pay Last Year's Dues </span>
+                        <span>Record Previous-Year Payment</span>
+                      </Button>
+                    ) : (
+                      <div className="flex-1 text-xs text-income font-medium flex items-center gap-1.5 py-1">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Previous-year dues cleared</span>
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingHistoricalEnrollment(primaryHistorical?.enrollment || null);
+                        setShowHistoricalModal(true);
+                      }}
+                      className="h-8 text-xs gap-1.5"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      <span>Edit Fee Record</span>
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-3 border-2 border-dashed rounded-lg bg-muted/10">
+                  <div className="h-10 w-10 rounded-full bg-muted/60 flex items-center justify-center text-muted-foreground">
+                    <Calendar className="h-5 w-5 opacity-60" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                      Previous-Year Dues
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                      No previous-year dues. This student has no unpaid balance carried forward from previous years.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingHistoricalEnrollment(null);
+                      setShowHistoricalModal(true);
+                    }}
+                    className="text-xs gap-1.5 border-dashed border-primary/50 text-primary hover:bg-primary/10"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>+ Add Previous-Year Fee</span>
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Recent Payments Section */}
+          <div className="rounded-xl border bg-card p-4 sm:p-5 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Current Fee Account</p>
-                <h2 className="text-sm font-semibold text-foreground mt-0.5">
-                  Academic Year {currentYear?.label || '—'}
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                  Recent Payments
                 </h2>
+                <p className="text-[11px] text-muted-foreground">
+                  Latest payments recorded for this student
+                </p>
               </div>
-              <StudentFeeBadge status={currentSummary.status} />
+              {payments.length > 0 && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => setActiveTab('payments')}
+                  className="text-xs h-auto p-0 font-medium text-primary hover:underline"
+                >
+                  View All Payments ({payments.length}) →
+                </Button>
+              )}
             </div>
 
-            {/* Main Financial Numbers: Obligation | Collected | Pending */}
-            <div className="grid grid-cols-3 gap-3 sm:gap-6 font-mono-nums">
-              <div>
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Total Obligation</p>
-                <p className="money-fit mt-1 font-mono text-lg sm:text-2xl font-bold text-foreground">
-                  {formatINR(currentSummary.obligation)}
-                </p>
-                <p className="text-[11px] text-muted-foreground mt-0.5 font-sans">
-                  Annual: {formatINR(current.annualFeeAmount)}
-                  {current.additionalOutstandingAmount > 0 && ` + Last Year's Pending: ${formatINR(current.additionalOutstandingAmount)}`}
-                </p>
-              </div>
+            {payments.length > 0 ? (
+              <div className="divide-y rounded-lg border bg-muted/20">
+                {payments.slice(0, 4).map((entry) => {
+                  const entryEnrollment = studentEnrollments.find((e) => e.id === entry.studentEnrollmentId);
+                  const entryYear = academicYears.find((y) => y.id === entryEnrollment?.academicYearId);
+                  const account = accounts.find((a) => a.id === entry.accountId);
 
-              <div>
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Collected</p>
-                <p className="money-fit mt-1 font-mono text-lg sm:text-2xl font-bold text-income">
-                  {formatINR(currentSummary.collected)}
-                </p>
-                <p className="text-[11px] text-muted-foreground mt-0.5 font-sans">
-                  {Math.round(currentSummary.collectionPercent)}% of fee paid
-                </p>
+                  return (
+                    <div key={entry.id} className="flex items-center justify-between p-3 text-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="font-mono text-sm font-bold text-income shrink-0 font-mono-nums">
+                          {formatINR(entry.amount)}
+                        </div>
+                        <span className="text-muted-foreground">•</span>
+                        <Badge
+                          variant="outline"
+                          className={
+                            entry.isLateCollection
+                              ? 'border-warning/30 bg-warning/10 text-warning text-[10px] font-medium'
+                              : 'border-primary/20 bg-primary/5 text-primary text-[10px] font-medium'
+                          }
+                        >
+                          {entry.isLateCollection
+                            ? `Previous Year — ${entryEnrollment?.className || 'Class'} (AY ${entryYear?.label || '—'})`
+                            : `Current Year (AY ${entryYear?.label || '—'})`}
+                        </Badge>
+                        <span className="text-muted-foreground hidden sm:inline">•</span>
+                        <span className="text-muted-foreground truncate hidden sm:inline">
+                          {entry.paymentMethod === 'upi' ? `UPI • ${account?.name || 'School Bank'}` : (account?.name || 'Cash')}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground shrink-0 font-mono-nums">
+                        {entry.date.toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-
-              <div>
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Current Pending</p>
-                <p className={`money-fit mt-1 font-mono text-lg sm:text-2xl font-bold ${currentSummary.pending > 0 ? 'text-warning' : 'text-income'}`}>
-                  {currentSummary.pending > 0 ? formatINR(currentSummary.pending) : '₹0 (Clear)'}
-                </p>
-                {currentSummary.pending <= 0 && (
-                  <p className="text-[11px] text-income mt-0.5 font-sans flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3 inline" /> Fully settled
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Progress Bar */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex justify-between text-[11px] text-muted-foreground font-medium">
-                <span>Payment Progress</span>
-                <span>{Math.round(currentSummary.collectionPercent)}%</span>
-              </div>
-              <Progress value={currentSummary.collectionPercent} className="h-2" />
-            </div>
-
-            {/* Supporting Payment Method Breakdown */}
-            <div className="border-t pt-3.5">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
-                Payment Collection Breakdown
+            ) : (
+              <p className="text-xs text-muted-foreground py-2">
+                No fee payments recorded yet for this student.
               </p>
-              <div className="grid grid-cols-2 gap-2.5 text-xs font-mono-nums">
-                <div className="rounded-lg border bg-muted/20 p-2">
-                  <span className="text-[11px] text-muted-foreground block">Cash</span>
-                  <span className="font-mono font-medium">{formatINR(currentSummary.cash)}</span>
-                </div>
-                <div className="rounded-lg border bg-muted/20 p-2">
-                  <span className="text-[11px] text-muted-foreground block">UPI</span>
-                  <span className="font-mono font-medium">{formatINR(currentSummary.upi)}</span>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Student Profile & Enrollment Details Card */}
@@ -460,14 +782,30 @@ export default function StudentDetailPage() {
                   Official fee transactions recorded through the finance ledger
                 </p>
               </div>
-              <Button
-                size="sm"
-                onClick={() => setPaymentEnrollmentId(current.id)}
-                className="h-8 text-xs gap-1.5"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Record Payment</span>
-              </Button>
+              <div className="flex items-center gap-2">
+                {previousPending > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedPreviousEnrollment(null);
+                      setShowPreviousPaymentModal(true);
+                    }}
+                    className="h-8 text-xs gap-1.5 border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
+                  >
+                    <IndianRupee className="h-3.5 w-3.5" />
+                    <span>Record Previous-Year Payment</span>
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => setPaymentEnrollmentId(current.id)}
+                  className="h-8 text-xs gap-1.5"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Record Current-Year Payment</span>
+                </Button>
+              </div>
             </div>
 
             {payments.length > 0 ? (
@@ -504,20 +842,22 @@ export default function StudentDetailPage() {
                               variant="outline"
                               className={
                                 entry.isLateCollection
-                                  ? 'border-warning/30 bg-warning/10 text-warning text-[10px]'
-                                  : 'border-primary/20 bg-primary/5 text-primary text-[10px]'
+                                  ? 'border-warning/30 bg-warning/10 text-warning text-[10px] font-medium'
+                                  : 'border-primary/20 bg-primary/5 text-primary text-[10px] font-medium'
                               }
                             >
                               {entry.isLateCollection
-                                ? `Previous Year (AY ${year?.label || '—'})`
-                                : `Current Year (AY ${year?.label || '—'})`}
+                                ? `Previous-Year Due — ${enrollment?.className || 'Class'}`
+                                : `Current-Year Fee`}
                             </Badge>
                           </td>
-                          <td className="py-3 px-4 capitalize text-muted-foreground">
-                            {entry.paymentMethod ? entry.paymentMethod.replace('_', ' ') : 'Cash'}
+                          <td className="py-3 px-4 capitalize font-medium text-foreground">
+                            {entry.paymentMethod === 'upi' ? 'UPI' : 'Cash'}
                           </td>
                           <td className="py-3 px-4 text-muted-foreground">
-                            {account?.name || 'School Bank'}
+                            {entry.paymentMethod === 'upi'
+                              ? `UPI • ${account?.name || 'School Bank'}`
+                              : (account?.name ? `Cash • ${account.name}` : 'Cash')}
                           </td>
                           <td className="py-3 px-4 font-mono text-muted-foreground text-[11px]">
                             {entry.paymentReference || '—'}
@@ -564,140 +904,30 @@ export default function StudentDetailPage() {
             )}
           </div>
         </TabsContent>
-
-        {/* TAB 3: PREVIOUS YEARS */}
-        <TabsContent value="previous-years" className="space-y-4 outline-none">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Historical Academic Years
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Fee obligations, collections, and dues from previous enrollment years
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setEditingHistoricalEnrollment(null);
-                setShowHistoricalModal(true);
-              }}
-              className="text-xs gap-1.5"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Add Previous-Year Fee</span>
-            </Button>
-          </div>
-
-          {historicalEnrollments.length > 0 ? (
-            <div className="space-y-3">
-              {historicalEnrollments.map(({ enrollment, year, summary }) => (
-                <div
-                  key={enrollment.id}
-                  className="rounded-xl border bg-card p-4 shadow-sm flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm text-foreground">
-                        Academic Year {year?.label || '—'}
-                      </span>
-                      <StudentFeeBadge status={summary.status} size="sm" />
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>Class: {enrollment.className}</span>
-                      <span>·</span>
-                      <StudentMediumBadge medium={enrollment.medium} size="xs" variant="compact" />
-                    </div>
-                    <div className="flex flex-wrap gap-3 font-mono text-xs pt-1">
-                      <span className="text-muted-foreground">
-                        Obligation: <strong className="text-foreground">{formatINR(summary.obligation)}</strong>
-                      </span>
-                      <span className="text-muted-foreground">
-                        Collected: <strong className="text-income">{formatINR(summary.collected)}</strong>
-                      </span>
-                      <span className="text-muted-foreground">
-                        Pending:{' '}
-                        <strong className={summary.pending > 0 ? 'text-warning' : 'text-income'}>
-                          {summary.pending > 0 ? formatINR(summary.pending) : '₹0'}
-                        </strong>
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-auto">
-                    {summary.pending > 0 && (
-                      <Button
-                        size="sm"
-                        onClick={() => setPaymentEnrollmentId(enrollment.id)}
-                        className="text-xs gap-1.5"
-                      >
-                        <IndianRupee className="h-3.5 w-3.5" />
-                        <span>Record Past Payment</span>
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                      onClick={() => {
-                        setEditingHistoricalEnrollment(enrollment);
-                        setShowHistoricalModal(true);
-                      }}
-                      title="Edit fee record"
-                      aria-label="Edit fee record"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    {summary.collected <= 0 && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => setDeletingHistoricalEnrollment(enrollment)}
-                        title="Delete fee record"
-                        aria-label="Delete fee record"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed bg-card p-8 text-center space-y-2 text-xs text-muted-foreground">
-              <Calendar className="mx-auto h-8 w-8 opacity-30" />
-              <p className="font-medium text-foreground">No historical fee records</p>
-              <p>This student currently has only their active enrollment year on record.</p>
-              <div className="pt-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setEditingHistoricalEnrollment(null);
-                    setShowHistoricalModal(true);
-                  }}
-                  className="text-xs gap-1.5"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Add Previous-Year Fee Record</span>
-                </Button>
-              </div>
-            </div>
-          )}
-        </TabsContent>
       </Tabs>
 
-      {/* Record or Edit Fee Payment Modal */}
+      {/* Dedicated Record Current-Year Payment Modal */}
+      {student && current && (
+        <RecordCurrentPaymentModal
+          open={!!paymentEnrollmentId}
+          onClose={() => setPaymentEnrollmentId(undefined)}
+          student={student}
+          enrollment={current}
+          currentPending={currentYearPending}
+          currentFee={currentYearFee}
+          currentPaid={currentYearPaid}
+        />
+      )}
+
+      {/* Edit Fee Payment Modal (for editing existing payments in table) */}
       <AddIncomeModal
-        isOpen={!!paymentEnrollmentId || !!editingIncomeEntry}
+        isOpen={!!editingIncomeEntry}
         onClose={() => {
-          setPaymentEnrollmentId(undefined);
           setEditingIncomeEntry(null);
         }}
-        presetStudentEnrollmentId={paymentEnrollmentId || editingIncomeEntry?.studentEnrollmentId || undefined}
+        presetStudentEnrollmentId={editingIncomeEntry?.studentEnrollmentId || undefined}
         editEntry={editingIncomeEntry || undefined}
+        tuitionOnly={true}
       />
 
       {/* Edit Student Modal */}
@@ -721,6 +951,35 @@ export default function StudentDetailPage() {
         existingEnrollments={studentEnrollments}
         editingEnrollment={editingHistoricalEnrollment}
       />
+
+      {/* Record Previous-Year Payment Modal */}
+      {student && (selectedPreviousEnrollment || previousEnrollmentObj) && (
+        <RecordPreviousPaymentModal
+          open={showPreviousPaymentModal}
+          onClose={() => {
+            setShowPreviousPaymentModal(false);
+            setSelectedPreviousEnrollment(null);
+          }}
+          student={student}
+          previousEnrollment={selectedPreviousEnrollment || previousEnrollmentObj}
+          previousPending={
+            selectedPreviousEnrollment
+              ? getStudentFeeSummary(selectedPreviousEnrollment, incomeEntries).pending
+              : previousPending
+          }
+          previousClass={selectedPreviousEnrollment?.className || previousClass}
+          previousObligation={
+            selectedPreviousEnrollment
+              ? getStudentFeeSummary(selectedPreviousEnrollment, incomeEntries).obligation
+              : previousObligation
+          }
+          previousRecovered={
+            selectedPreviousEnrollment
+              ? getStudentFeeSummary(selectedPreviousEnrollment, incomeEntries).collected
+              : previousRecovered
+          }
+        />
+      )}
 
       {/* Archive Student Confirmation Dialog */}
       <AlertDialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>

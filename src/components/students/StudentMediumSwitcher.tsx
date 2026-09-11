@@ -4,16 +4,15 @@ import type { StudentMedium } from '@/types/students';
 
 interface StudentMediumSwitcherProps {
   activeMedium: 'all' | StudentMedium;
-  onChange: (medium: 'all' | StudentMedium) => void;
-  allCount: number;
+  onChange: (medium: StudentMedium) => void;
   gujaratiCount: number;
   englishCount: number;
+  allCount?: number;
 }
 
 export function StudentMediumSwitcher({
   activeMedium,
   onChange,
-  allCount,
   gujaratiCount,
   englishCount,
 }: StudentMediumSwitcherProps) {
@@ -21,33 +20,23 @@ export function StudentMediumSwitcher({
 
   const tabs = [
     {
-      id: 'all' as const,
-      label: t('allStudentsTab'),
-      shortLabel: 'All',
-      count: allCount,
-      dotClass: 'bg-foreground/50',
-      activeBorderClass: 'border-primary/40 shadow-sm bg-card text-foreground ring-1 ring-primary/20',
-      badgeActiveClass: 'bg-primary/10 text-primary font-bold',
-      badgeInactiveClass: 'bg-muted text-muted-foreground',
-    },
-    {
-      id: 'gujarati' as const,
-      label: t('gujaratiMedium'),
+      id: 'gujarati' as StudentMedium,
+      label: t('gujaratiMedium') || 'Gujarati Medium',
       shortLabel: 'Gujarati',
       count: gujaratiCount,
       dotClass: 'bg-amber-600 dark:bg-amber-400',
-      activeBorderClass: 'border-amber-500/50 shadow-sm bg-card text-foreground ring-1 ring-amber-500/30',
-      badgeActiveClass: 'bg-amber-500/15 text-amber-800 dark:text-amber-300 font-bold',
+      activeBorderClass: 'border-amber-500/60 bg-amber-500/10 text-amber-900 dark:text-amber-200 ring-2 ring-amber-500/30 shadow-sm font-bold',
+      badgeActiveClass: 'bg-amber-500/20 text-amber-900 dark:text-amber-100 font-bold',
       badgeInactiveClass: 'bg-muted text-muted-foreground',
     },
     {
-      id: 'english' as const,
-      label: t('englishMedium'),
+      id: 'english' as StudentMedium,
+      label: t('englishMedium') || 'English Medium',
       shortLabel: 'English',
       count: englishCount,
       dotClass: 'bg-sky-600 dark:bg-sky-400',
-      activeBorderClass: 'border-sky-500/50 shadow-sm bg-card text-foreground ring-1 ring-sky-500/30',
-      badgeActiveClass: 'bg-sky-500/15 text-sky-800 dark:text-sky-300 font-bold',
+      activeBorderClass: 'border-sky-500/60 bg-sky-500/10 text-sky-900 dark:text-sky-200 ring-2 ring-sky-500/30 shadow-sm font-bold',
+      badgeActiveClass: 'bg-sky-500/20 text-sky-900 dark:text-sky-100 font-bold',
       badgeInactiveClass: 'bg-muted text-muted-foreground',
     },
   ];

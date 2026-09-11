@@ -7,6 +7,8 @@ import StudentDetailPage from '@/pages/StudentDetailPage';
 import Dashboard from '@/pages/Dashboard';
 import IncomePage from '@/pages/IncomePage';
 import { AddHistoricalFeeModal } from '@/components/students/AddHistoricalFeeModal';
+import { AddStudentModal } from '@/components/AddStudentModal';
+import { AddIncomeModal } from '@/components/AddIncomeModal';
 import type { StudentInput, EnrollmentInput } from '@/services/students';
 
 describe('Previous-Year Fee Simplification & Live Propagation', () => {
@@ -201,15 +203,14 @@ describe('Previous-Year Fee Simplification & Live Propagation', () => {
       </MemoryRouter>
     );
 
-    // Overview warning callout must display Last Year's Pending Fees: ₹6,000
-    expect(screen.getByText(/Last Year's Pending Fees:/)).toBeInTheDocument();
-    expect(screen.getByText('₹6,000')).toBeInTheDocument();
+    // Overview card must display Previous-Year Outstanding: ₹6,000
+    expect(screen.getByText(/Previous-Year Outstanding/i)).toBeInTheDocument();
+    expect(screen.getAllByText('₹6,000').length).toBeGreaterThanOrEqual(1);
 
-    // Click Previous Years tab
-    fireEvent.click(screen.getByRole('tab', { name: /Previous Years/ }));
-    expect(screen.getByText('Academic Year 2025-26')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Record Past Payment/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Edit fee record/i })).toBeInTheDocument();
+    // Click Payments tab (which keeps only Recorded Fee Payments)
+    fireEvent.click(screen.getByRole('tab', { name: /Payments/ }));
+    expect(screen.getByText('Recorded Fee Payments')).toBeInTheDocument();
+    expect(screen.queryByText('Previous-Year Fee Records')).not.toBeInTheDocument();
 
     unmountStudent();
 
@@ -222,5 +223,94 @@ describe('Previous-Year Fee Simplification & Live Propagation', () => {
 
     // Total fees still to collect: 100,000 target + 6,000 prior = ₹1,06,000
     expect(screen.getByText('₹1,06,000')).toBeInTheDocument();
+  });
+
+  it('when added last year pending fees from edit student feature it updates student detail page and record late fees in AddIncomeModal', async () => {
+    const student = useStudentStore.getState().students[0];
+    const enrollment = useStudentStore.getState().enrollments[0];
+
+    const savedEnrollments: EnrollmentInput[] = [];
+    useStudentStore.setState({
+      saveStudent: async (_student: StudentInput, enr: EnrollmentInput) => {
+        savedEnrollments.push(enr);
+        useStudentStore.setState((state) => ({
+          enrollments: state.enrollments.some((e) => e.id === enr.id)
+            ? state.enrollments.map((e) => e.id === enr.id ? { ...e, annualFeeAmount: enr.annual_fee_amount, additionalOutstandingAmount: enr.additional_outstanding_amount } : e)
+            : [
+                ...state.enrollments,
+                {
+                  id: enr.id || 'enr-prev-auto',
+                  studentId: student.id,
+                  academicYearId: enr.academic_year_id,
+                  className: enr.class_name,
+                  medium: enr.medium,
+                  annualFeeAmount: enr.annual_fee_amount,
+                  additionalOutstandingAmount: enr.additional_outstanding_amount,
+                  openingCollectedCash: 0,
+                  openingCollectedUpi: 0,
+                  openingCollectedOther: 0,
+                  openingSnapshotDate: null,
+                  status: 'active',
+                  notes: '',
+                },
+              ],
+        }));
+      },
+    });
+
+    const { unmount: unmountEdit } = render(
+      <MemoryRouter>
+        <AddStudentModal
+          open={true}
+          onClose={() => {}}
+          student={student}
+          enrollment={enrollment}
+        />
+      </MemoryRouter>
+    );
+
+    // Enter last year pending fees
+    const extraInput = screen.getByLabelText(/Last Year's Pending Fees/i);
+    fireEvent.change(extraInput, { target: { value: '4500' } });
+
+    // Save
+    const saveBtn = screen.getByRole('button', { name: /Save|Update/i });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(savedEnrollments.length).toBeGreaterThanOrEqual(1);
+    });
+
+    unmountEdit();
+
+    // Verify AddIncomeModal now reflects last year's pending fee in the Apply To section
+    const { unmount: unmountIncome } = render(
+      <MemoryRouter>
+        <AddIncomeModal
+          isOpen={true}
+          onClose={() => {}}
+          presetStudentEnrollmentId="enr-current"
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('Apply To')).toBeInTheDocument();
+    expect(screen.getByText(/Previous-Year Fee/i)).toBeInTheDocument();
+    expect(screen.getByText('₹4,500')).toBeInTheDocument();
+
+    unmountIncome();
+
+    // Verify StudentDetailPage reflects it
+    render(
+      <MemoryRouter initialEntries={['/students/stu-1']}>
+        <Routes>
+          <Route path="/students/:studentId" element={<StudentDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText(/Previous-Year Outstanding/i)).toBeInTheDocument();
+    expect(screen.getAllByText('₹4,500').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /Record Previous-Year Payment/i }).length).toBeGreaterThanOrEqual(1);
   });
 });

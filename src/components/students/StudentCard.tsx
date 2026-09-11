@@ -27,6 +27,7 @@ interface StudentCardProps {
   row: StudentRowData;
   onSelectStudent: (studentId: string) => void;
   onRecordPayment: (enrollmentId: string) => void;
+  onRecordPreviousPayment?: (row: StudentRowData) => void;
   onEditStudent: (student: Student, enrollment: StudentEnrollment) => void;
   activeMedium?: 'all' | StudentMedium;
 }
@@ -35,6 +36,7 @@ export function StudentCard({
   row,
   onSelectStudent,
   onRecordPayment,
+  onRecordPreviousPayment,
   onEditStudent,
   activeMedium = 'all',
 }: StudentCardProps) {
@@ -139,6 +141,15 @@ export function StudentCard({
                   <IndianRupee className="h-3.5 w-3.5 text-income" />
                   <span>{t('recordFeePayment')}</span>
                 </DropdownMenuItem>
+                {previous > 0 && (
+                  <DropdownMenuItem
+                    onClick={() => onRecordPayment(enrollment.id)}
+                    className="gap-2 cursor-pointer text-amber-600 dark:text-amber-400 font-medium"
+                  >
+                    <IndianRupee className="h-3.5 w-3.5" />
+                    <span>Pay Last Year Dues ({formatINR(previous)})</span>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   onClick={() => onEditStudent(student, enrollment)}
                   className="gap-2 cursor-pointer"
@@ -213,11 +224,27 @@ export function StudentCard({
 
         {/* Last Year's Pending Warning if applicable */}
         {previous > 0 && (
-          <div className="flex items-center gap-1.5 rounded-lg bg-warning/10 border border-warning/25 px-2.5 py-1.5 text-xs font-medium text-warning">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">
-              Last year pending: <strong className="font-mono font-mono-nums">{formatINR(previous)}</strong>
-            </span>
+          <div className="flex items-center justify-between gap-1.5 rounded-lg bg-warning/10 border border-warning/25 px-2.5 py-1.5 text-xs font-medium text-warning">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">
+                Last year pending: <strong className="font-mono font-mono-nums">{formatINR(previous)}</strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onRecordPreviousPayment) {
+                  onRecordPreviousPayment(row);
+                } else {
+                  onRecordPayment(enrollment.id);
+                }
+              }}
+              className="text-[11px] font-semibold underline hover:text-warning/80 shrink-0"
+            >
+              Record Previous-Year Payment
+            </button>
           </div>
         )}
       </div>

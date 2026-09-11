@@ -179,6 +179,42 @@ describe('AddIncomeModal dropdowns', () => {
     // Verify Reference (optional) field is removed
     expect(screen.queryByText(/Reference \(optional\)/i)).not.toBeInTheDocument();
   });
+
+  it('removes Lunch Fees and Investment/Extra options when in student tab (tuitionOnly)', () => {
+    render(
+      <BrowserRouter>
+        <AddIncomeModal
+          isOpen={true}
+          onClose={() => {}}
+          presetStudentEnrollmentId="enr-1"
+          tuitionOnly={true}
+        />
+      </BrowserRouter>
+    );
+
+    // Tuition Fees must exist
+    expect(screen.getByText('Tuition Fees')).toBeInTheDocument();
+
+    // Lunch Fees and Investment / Extra must NOT exist in the student's tab
+    expect(screen.queryByText('Lunch Fees')).not.toBeInTheDocument();
+    expect(screen.queryByText('Investment / Extra')).not.toBeInTheDocument();
+  });
+
+  it('retains all 3 income types (Tuition, Lunch, Investment/Extra) for normal Add Income page', () => {
+    render(
+      <BrowserRouter>
+        <AddIncomeModal
+          isOpen={true}
+          onClose={() => {}}
+        />
+      </BrowserRouter>
+    );
+
+    // All three options must be present on the normal Add Income page
+    expect(screen.getByText('Tuition Fees')).toBeInTheDocument();
+    expect(screen.getByText('Lunch Fees')).toBeInTheDocument();
+    expect(screen.getByText('Investment / Extra')).toBeInTheDocument();
+  });
 });
 
 

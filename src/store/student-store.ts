@@ -50,14 +50,26 @@ export const useStudentStore = create<StudentState>((set, get) => ({
     });
   },
   init: async (force = false, targetUserId?: string) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const currentUserId = targetUserId || user?.id || null;
+    let currentUserId = targetUserId || null;
+    if (!currentUserId) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        currentUserId = session?.user?.id || null;
+        if (!currentUserId) {
+          const { data: { user } } = await supabase.auth.getUser();
+          currentUserId = user?.id || null;
+        }
+      } catch {
+        currentUserId = null;
+      }
+    }
+
     if (!currentUserId) {
       get().reset();
       return;
     }
 
-    if (get().isInitialized && get().initializedForUserId === currentUserId && !force) {
+    if (get().isInitialized && !get().error && get().initializedForUserId === currentUserId && !force) {
       return;
     }
 
@@ -66,24 +78,37 @@ export const useStudentStore = create<StudentState>((set, get) => ({
     }
 
     set({ isLoading: true, error: null });
-    try {
-      const result = await studentsService.getAll();
-      if (result.error) throw result.error;
-      set({
-        students: (result.students || []).map(mapStudent),
-        enrollments: (result.enrollments || []).map(mapEnrollment),
-        isInitialized: true,
-        initializedForUserId: currentUserId,
-        isLoading: false,
-      });
-    } catch (error) {
-      set({
-        error: error instanceof Error ? error.message : 'Failed to load students',
-        isInitialized: true,
-        initializedForUserId: currentUserId,
-        isLoading: false,
-      });
+
+    const maxRetries = 2;
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await studentsService.getAll();
+        if (result.error) throw result.error;
+        set({
+          students: (result.students || []).map(mapStudent),
+          enrollments: (result.enrollments || []).map(mapEnrollment),
+          isInitialized: true,
+          initializedForUserId: currentUserId,
+          isLoading: false,
+          error: null,
+        });
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 350));
+        }
+      }
     }
+
+    set({
+      error: lastError instanceof Error ? lastError.message : 'Failed to load students',
+      isInitialized: false,
+      initializedForUserId: currentUserId,
+      isLoading: false,
+    });
   },
   saveStudent: async (student, enrollment) => {
     const result = await studentsService.save(student, enrollment);

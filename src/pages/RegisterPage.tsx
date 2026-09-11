@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { signUp } from '@/services/auth';
 import { startDemo } from '@/services/demo';
+import { useFinanceStore } from '@/store/finance-store';
+import { useStudentStore } from '@/store/student-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { GraduationCap, Loader2, PlayCircle } from 'lucide-react';
@@ -39,6 +41,9 @@ export default function RegisterPage() {
       setLoading(false);
       return;
     }
+
+    useFinanceStore.getState().reset();
+    useStudentStore.getState().reset();
 
     navigate('/setup', { replace: true });
     setLoading(false);

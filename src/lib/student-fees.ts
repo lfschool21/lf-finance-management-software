@@ -129,6 +129,56 @@ export function groupRosterByClass(enrollments: StudentEnrollment[], incomeEntri
   })).sort((a, b) => compareClassNames(a.className, b.className));
 }
 
+export interface ClassCardSummary {
+  className: string;
+  totalStudents: number;
+  currentYearPending: number;
+  previousYearPending: number;
+  totalPending: number;
+}
+
+export function groupRosterByClassWithPrevious(
+  enrollments: StudentEnrollment[],
+  allEnrollments: StudentEnrollment[],
+  incomeEntries: IncomeEntry[],
+  currentYearId: string,
+): ClassCardSummary[] {
+  const active = enrollments.filter((enrollment) => enrollment.status === 'active');
+  const groups = new Map<string, ClassCardSummary>();
+
+  for (const enrollment of active) {
+    let summary = groups.get(enrollment.className);
+    if (!summary) {
+      summary = {
+        className: enrollment.className,
+        totalStudents: 0,
+        currentYearPending: 0,
+        previousYearPending: 0,
+        totalPending: 0,
+      };
+      groups.set(enrollment.className, summary);
+    }
+
+    const feeSummary = getStudentFeeSummary(enrollment, incomeEntries);
+    const prevPending = getStudentPreviousPending(
+      enrollment.studentId,
+      currentYearId,
+      allEnrollments,
+      incomeEntries,
+    );
+
+    // Current-year pending is strictly based on annualFeeAmount minus collections for this enrollment
+    const currentPending = Math.max(0, enrollment.annualFeeAmount - feeSummary.collected);
+
+    summary.totalStudents += 1;
+    summary.currentYearPending = Math.round((summary.currentYearPending + currentPending) * 100) / 100;
+    summary.previousYearPending = Math.round((summary.previousYearPending + prevPending) * 100) / 100;
+    summary.totalPending = Math.round((summary.totalPending + currentPending + prevPending) * 100) / 100;
+  }
+
+  return Array.from(groups.values()).sort((a, b) => compareClassNames(a.className, b.className));
+}
+
 export function findStudentForEnrollment(
   enrollmentId: string | null,
   enrollments: StudentEnrollment[],

@@ -11,6 +11,7 @@ interface StudentMobileCardProps {
   row: StudentRowData;
   onSelectStudent: (studentId: string) => void;
   onRecordPayment: (enrollmentId: string) => void;
+  onRecordPreviousPayment?: (row: StudentRowData) => void;
   activeMedium?: 'all' | StudentMedium;
 }
 
@@ -18,6 +19,7 @@ export function StudentMobileCard({
   row,
   onSelectStudent,
   onRecordPayment,
+  onRecordPreviousPayment,
   activeMedium = 'all',
 }: StudentMobileCardProps) {
   const { student, enrollment, fees, previous } = row;
@@ -68,9 +70,25 @@ export function StudentMobileCard({
 
       {/* Last Year's Pending Fee Warning if any */}
       {previous > 0 && (
-        <div className="flex items-center gap-1.5 rounded-md bg-warning/10 px-2 py-1 text-[11px] font-medium text-warning">
-          <AlertCircle className="h-3 w-3 shrink-0" />
-          <span>Last year's pending: {formatINR(previous)}</span>
+        <div className="flex items-center justify-between gap-1.5 rounded-md bg-warning/10 px-2.5 py-1.5 text-[11px] font-medium text-warning">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <AlertCircle className="h-3 w-3 shrink-0" />
+            <span className="truncate">Last year: {formatINR(previous)}</span>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onRecordPreviousPayment) {
+                onRecordPreviousPayment(row);
+              } else {
+                onRecordPayment(enrollment.id);
+              }
+            }}
+            className="text-[10px] font-semibold underline hover:text-warning/80 shrink-0"
+          >
+            Record Previous-Year Payment
+          </button>
         </div>
       )}
 

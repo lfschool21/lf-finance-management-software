@@ -119,10 +119,10 @@ describe('Payment Edit, Delete, and Dashboard Fee Adjustment', () => {
     // Verify terminology: Annual fee + Last Year's Pending
     expect(screen.getByText(/Last Year's Pending: ₹5,000/)).toBeInTheDocument();
 
-    // Total obligation = 30000 + 5000 = 35000
-    // Payment recorded = 10000
-    // Pending balance = 25000
-    expect(screen.getByText('₹25,000')).toBeInTheDocument();
+    // Strict accounting separation:
+    // Current-year fee = 30000, Payment recorded = 10000, Current pending = 20000
+    // Previous-year pending = 5000 (kept strictly separate)
+    expect(screen.getByText('₹20,000')).toBeInTheDocument();
 
     // Switch to payments tab
     fireEvent.click(screen.getByRole('tab', { name: /Payments/ }));
@@ -166,8 +166,8 @@ describe('Payment Edit, Delete, and Dashboard Fee Adjustment', () => {
     // Switch to Overview tab to verify restored student balance
     fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
 
-    // Student pending balance should now be restored to 35,000 (both Total Obligation and Current Pending are ₹35,000)
-    expect(screen.getAllByText('₹35,000')).toHaveLength(2);
+    // Student pending balance should now be restored to 30,000 (both Total Current-Year Fee and Current Pending are ₹30,000)
+    expect(screen.getAllByText('₹30,000')).toHaveLength(2);
   });
 
   it('adjusts Dashboard with Last Year Remaining Fees and updates when payment is recorded or removed', () => {
