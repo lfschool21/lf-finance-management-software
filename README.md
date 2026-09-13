@@ -1,175 +1,558 @@
 <div align="center">
 
-# 🌸 Little Flowers Finance Tracker
+🎓 Little Flowers School Finance Management
 
-**A private, all-in-one financial management system for running a school's money matters — tuition, expenses, transfers, and recoverables — in one clean dashboard.**
+Academic-year finance, student fees, reporting, and operational tracking in one focused web application.
 
-[![React](https://img.shields.io/badge/React-18.3-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-5.4-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
-[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&logoColor=white)](#-pwa-support)
-[![License: Private](https://img.shields.io/badge/license-private-lightgrey)](#-license)
+<p>
+  A full-stack school finance platform built with React, TypeScript, Supabase, and PostgreSQL.
+  It is designed around real administrative workflows: collecting student fees, tracking prior-year dues,
+  managing expenses and accounts, reconciling money movement, and turning financial data into useful reports.
+</p>
+
+
+
+
+
+
+
+
 
 </div>
 
----
+✨ Overview
 
-## 📖 About
+Little Flowers School Finance Management is a purpose-built web application for managing school finances and student fee accounts across academic years.
 
-**Little Flowers Finance Tracker** is a purpose-built web app for tracking the day-to-day finances of a school — tuition and lunch fee collection, staff and operational expenses, cash/bank transfers, student-wise fee ledgers, and money advanced to (and recovered from) staff or vendors.
+The project goes beyond simple income/expense CRUD. It models school-specific financial behavior such as current-year tuition, previous-year pending fees, payment allocation, English/Gujarati medium enrollment, account-to-account transfers, recurring expenses, recoverable advances, opening balances, financial reconciliation, and year-wise reporting.
 
-It's designed as a single source of truth that replaces scattered spreadsheets and paper registers, while staying fast enough to use on a phone at the front desk between classes.
+The application combines a responsive React frontend with Supabase authentication, PostgreSQL persistence, Row Level Security, database validation, and transactional RPC workflows.
 
-## ✨ Features
+🚀 Key Features
 
-### 💰 Financial Core
-- **Dashboard** — at-a-glance snapshot of cash position, fee collection progress, recent activity, and a cash-flow chart.
-- **Income tracking** — record tuition fees, lunch fees, and other income, with automatic classification of current vs. late/old-fee collections.
-- **Expense tracking** — separate school and home expense books, each with its own category set (salaries, rent, utilities, supplies, events, etc.).
-- **Transfers** — move money between school bank, personal bank, and cash accounts (deposits, withdrawals, internal transfers) with a full audit trail.
-- **Bank balances** — live balances per account, computed from every income, expense, transfer, and recoverable entry.
-- **Recoverables** — track advances given to staff/others and log partial or full repayments until settled.
-- **Recurring transactions** — set up monthly/bimonthly/quarterly recurring income or expenses, with a review flow before each one is posted.
+📊 Financial Dashboard
 
-### 🎓 Student Management
-- Per-class rosters with fee status badges (paid, partial, overdue).
-- Individual student pages with full payment history, current & historical fee recording, and class progression.
-- Bulk **student import** from Excel/CSV via a guided import wizard.
-- Global student search across the whole app.
+Academic-year-aware financial overview
 
-### 📊 Reporting & Insights
-- Visual reports (bar, line, and pie charts) for income vs. expenses, category breakdowns, and trends over time.
-- **Export to PDF and Excel** for sharing with stakeholders or keeping offline records.
-- Global search across income, expenses, transfers, and recoverables.
+Current-year fee collection and previous-year dues
 
-### 🛠️ Platform
-- **Multi-language UI** — English and Gujarati (ગુજરાતી), switchable at runtime.
-- **Academic year management** — define year boundaries, tuition targets, and carry-forward fees; the setup wizard walks a new school through initial accounts and years.
-- **Demo mode** — try the full app instantly via anonymous sign-in, no account needed.
-- **Backup & restore** — export/import your data as a safety net.
-- **Installable PWA** — add it to your home screen and it runs like a native app, offline-tolerant via a service worker.
-- **Row-level secured backend** — every table lives behind Supabase Auth + Postgres RLS policies, so each account only ever sees its own data.
+Available liquidity across configured accounts
 
-## 🧱 Tech Stack
+School profit and projected year-end position
 
-| Layer | Technology |
-|---|---|
-| Framework | React 18 + TypeScript, built with Vite |
-| Styling / UI | Tailwind CSS, shadcn/ui (Radix primitives), lucide-react icons |
-| State | Zustand stores, TanStack Query |
-| Forms & validation | React Hook Form + Zod |
-| Charts | Recharts |
-| Documents | jsPDF (PDF export), SheetJS/`@e965/xlsx` (Excel import & export) |
-| Backend | Supabase (Postgres, Auth, Row-Level Security, SQL migrations) |
-| Routing | React Router v6 |
-| Testing | Vitest + Testing Library (unit), Playwright (end-to-end) |
-| Tooling | ESLint, TypeScript strict project references |
+Gujarati and English medium student snapshots
 
-## 🚀 Getting Started
+Monthly income vs. school-expense visualization
 
-### Prerequisites
-- **Node.js** 18+ and **npm** (or `bun`, since a `bun.lock` is included)
-- A **Supabase** project (free tier is fine) — for the database and auth
+Top expense-category analysis
 
-### 1. Clone & install
-```bash
-git clone <this-repo-url>
-cd lf-finance-management-software
+Operational attention indicators for pending dues, recoverables, and recurring expenses
+
+Recent financial activity across accounts
+
+👨‍🎓 Student & Fee Management
+
+Central student directory with class and medium organization
+
+Separate Gujarati Medium and English Medium views
+
+Current academic-year enrollment records
+
+Student-level annual fee obligations and collection progress
+
+Previous-year fee history and carried-forward pending dues
+
+Current-year and historical fee payment workflows
+
+Payment-method tracking including cash, UPI, bank transfer, cheque, and other methods
+
+Automatic fee summaries: obligation, collected amount, pending amount, and collection percentage
+
+Class-wise student organization and fee summaries
+
+Student archival support
+
+📥 Intelligent Student Import
+
+The import workflow is designed for real school spreadsheets rather than a rigid single-format CSV.
+
+Flexible column mapping
+
+Recognizes common student, class, medium, fee, collected, and pending-fee headings
+
+Supports opening collection history
+
+Supports previous academic-year fee information
+
+Detects malformed amounts and inconsistent totals
+
+Flags possible duplicates and conflicts before import
+
+Supports default medium and annual-fee values when appropriate
+
+Validates current and historical fee relationships before committing data
+
+💰 Income Management
+
+Current-year tuition fees
+
+Previous-year fee collections
+
+Lunch-fee income
+
+Other school income
+
+Academic-year tuition targets
+
+Account and payment-method attribution
+
+Student-linked tuition payments
+
+Late-collection tracking against the original academic year
+
+🧾 Expense Management
+
+School and home/personal expense separation
+
+Structured expense categories
+
+Recurring expense templates
+
+Recurring-expense review workflow
+
+Account-aware expense recording
+
+Monthly and category-level expense analytics
+
+🔁 Transfers & Account Balances
+
+Multiple school, personal, and cash accounts
+
+Opening balance support
+
+Internal transfer tracking
+
+Cash deposit and withdrawal flows
+
+School-to-personal and personal-to-school transfer categories
+
+Derived account balances based on the complete transaction history
+
+Archived-account support
+
+🤝 Recoverables
+
+Money temporarily advanced from an account is modeled separately from normal expenses.
+
+Track recoverable advances by party
+
+Record partial or complete repayments
+
+Maintain outstanding balances
+
+Restore account liquidity on repayment without treating it as new income
+
+📈 Reports & Exports
+
+Monthly financial trends
+
+Academic-year Profit & Loss view
+
+All-time financial overview
+
+Year-over-year comparison
+
+Student-fee reporting
+
+Fee summaries by class and medium
+
+Pending-fee reports
+
+Expense-category analytics
+
+PDF export using jsPDF
+
+CSV transaction export
+
+Student-fee CSV export
+
+🌐 English + Gujarati Interface
+
+Global English/Gujarati language switcher
+
+Gujarati-aware typography and readability adjustments
+
+Persistent language preference through local storage
+
+Translated navigation, dashboard labels, actions, finance terminology, and student workflows
+
+🧪 Built-in Demo Workspace
+
+The login experience includes an Explore Demo mode backed by anonymous Supabase authentication.
+
+Creates an isolated demo workspace
+
+Seeds realistic sample finance data
+
+Allows the demo dataset to be reset
+
+Keeps demo data separate from registered-user workspaces
+
+Supports clean demo-workspace disposal
+
+🛠️ Tech Stack
+
+Layer
+
+Technologies
+
+Frontend
+
+React 18, TypeScript, Vite
+
+UI
+
+Tailwind CSS, shadcn/ui, Radix UI, Lucide React, Framer Motion
+
+Routing
+
+React Router
+
+State Management
+
+Zustand
+
+Forms & Validation
+
+React Hook Form, Zod
+
+Backend / Database
+
+Supabase, PostgreSQL
+
+Authentication
+
+Supabase Auth
+
+Database Security
+
+Row Level Security (RLS), validation functions, triggers
+
+Charts
+
+Recharts
+
+Spreadsheet Processing
+
+@e965/xlsx
+
+PDF Export
+
+jsPDF, jsPDF AutoTable
+
+Unit / Integration Testing
+
+Vitest, Testing Library
+
+End-to-End Testing
+
+Playwright
+
+Deployment Configuration
+
+Vercel
+
+🧠 Architecture
+
+flowchart LR
+    U[Admin / User] --> UI[React + TypeScript UI]
+    UI --> R[React Router]
+    UI --> S[Zustand Stores]
+    S --> SV[Service Layer]
+    SV --> SB[Supabase Client]
+
+    SB --> A[Supabase Auth]
+    SB --> DB[(PostgreSQL)]
+    DB --> RLS[Row Level Security]
+    DB --> RPC[Transactional RPC Functions]
+    DB --> VAL[Triggers & Integrity Validation]
+
+    UI --> CH[Recharts Analytics]
+    UI --> EXP[PDF / CSV / Spreadsheet Workflows]
+
+The frontend keeps UI concerns, state, domain calculations, and database access separated into dedicated layers:
+
+Pages / Components
+       ↓
+Zustand Stores
+       ↓
+Services
+       ↓
+Supabase Client
+       ↓
+PostgreSQL + RLS + RPC Functions
+
+This structure keeps financial rules testable and prevents critical business logic from living only inside presentation components.
+
+🗃️ Core Data Model
+
+Domain
+
+Main Records
+
+Academic configuration
+
+academic_years
+
+Accounts
+
+accounts
+
+Income
+
+income_entries
+
+Expenses
+
+expense_entries
+
+Transfers
+
+transfers
+
+Recurring expenses
+
+recurring_templates
+
+Students
+
+students
+
+Academic enrollment
+
+student_enrollments
+
+Recoverable advances
+
+recoverables
+
+Recoverable repayments
+
+recoverable_repayments
+
+Student identity and academic-year enrollment are intentionally separated. This allows a student to retain one identity while class, medium, annual fees, opening balances, and status change between academic years.
+
+🔐 Data Integrity & Security
+
+Financial software depends on correctness, not only interface design. The project therefore includes safeguards at both the application and database layers.
+
+Protected application routes with Supabase authentication
+
+User-owned financial data isolated through PostgreSQL Row Level Security
+
+Database validation for income, expenses, transfers, academic years, student enrollments, and recoverables
+
+Ownership checks for account-to-account transactions
+
+Protection against invalid/self transfers and inconsistent account history
+
+Atomic database workflows for multi-step operations such as initial setup and financial transactions
+
+Student-fee validation that keeps obligations, payments, historical dues, and linked income consistent
+
+Controlled backup/restore workflow
+
+Local release-gate script that refuses to run destructive integration checks against a non-local Supabase host
+
+🧮 Domain Rules Worth Highlighting
+
+A few examples of domain behavior implemented in the project:
+
+Transfers are not income or expenses — they move liquidity between accounts without changing profit.
+
+Recoverable advances are not normal expenses — repayments restore liquidity without being counted as new income.
+
+Previous-year fee collections retain their original academic-year context while still recording when the cash was actually received.
+
+Student fee totals distinguish imported opening history from payments recorded through the application.
+
+School profit and overall cash position are calculated separately so personal/home spending does not distort school operating performance.
+
+Account balances are derived from transaction history rather than maintained as an unrelated mutable number.
+
+📁 Project Structure
+
+.
+├── e2e/                         # Playwright end-to-end tests
+├── public/                      # Static assets and web manifest
+├── scripts/
+│   └── local-release-gate.mjs   # Local database integration safety gate
+├── src/
+│   ├── components/              # Shared UI and feature components
+│   │   ├── dashboard/           # Dashboard analytics components
+│   │   ├── students/            # Student and fee-management components
+│   │   └── ui/                  # shadcn/ui component primitives
+│   ├── hooks/                   # Reusable React hooks
+│   ├── integrations/supabase/   # Generated/typed Supabase integration
+│   ├── lib/                     # Domain rules, imports, backup, i18n, utilities
+│   ├── pages/                   # Route-level application pages
+│   ├── services/                # Database/service abstraction layer
+│   ├── store/                   # Zustand application stores
+│   ├── test/                    # UI and integration tests
+│   ├── types/                   # Finance and student TypeScript models
+│   └── utils/                   # Academic-year, currency, ordering utilities
+├── supabase/
+│   ├── migrations/              # Schema, policies, RPCs, integrity changes
+│   ├── preflight/               # Production-readiness SQL checks
+│   └── tests/                   # Database integrity fixtures/tests
+├── package.json
+├── vite.config.ts
+└── vitest.config.ts
+
+⚙️ Getting Started
+
+Prerequisites
+
+Node.js 18+
+
+npm
+
+A Supabase project
+
+Supabase CLI if you want to apply migrations from the command line or run the local database test workflow
+
+1. Install dependencies
+
 npm install
-```
 
-### 2. Configure environment variables
-Create a `.env` file in the project root:
+2. Configure environment variables
 
-```bash
-VITE_SUPABASE_URL=your-supabase-project-url
-VITE_SUPABASE_PUBLISHABLE_KEY=your-supabase-anon-public-key
-VITE_SUPABASE_PROJECT_ID=your-supabase-project-id
-```
+Create a .env file in the project root:
 
-You'll find these values in your Supabase project's **Settings → API** page.
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
 
-### 3. Set up the database
-Apply the SQL migrations in `supabase/migrations/` to your Supabase project — either by pasting them into the SQL editor in order, or via the Supabase CLI:
+Never commit private service-role keys or other privileged credentials to the repository.
 
-```bash
-supabase link --project-ref <your-project-ref>
+3. Apply the database migrations
+
+The database schema, Row Level Security policies, validation functions, and RPC workflows are versioned under supabase/migrations/.
+
+With a linked Supabase project, apply them using the Supabase CLI:
+
 supabase db push
-```
 
-### 4. Run the dev server
-```bash
+4. Start the development server
+
 npm run dev
-```
 
-The app will be available at `http://localhost:5173`. On first login, the **Setup Wizard** walks you through creating your accounts and first academic year — or just try **Demo Mode** from the login screen to explore with sample data.
+Vite will print the local development URL in the terminal.
 
-## 📜 Available Scripts
+🎮 Demo Mode Setup
 
-| Command | Description |
-|---|---|
-| `npm run dev` | Start the local development server |
-| `npm run build` | Type-check and build for production |
-| `npm run build:dev` | Build in development mode (useful for debugging a prod-like bundle) |
-| `npm run preview` | Preview the production build locally |
-| `npm run lint` | Run ESLint over the codebase |
-| `npm run typecheck` | Run TypeScript project checks with no emit |
-| `npm run test` | Run the Vitest unit/component test suite once |
-| `npm run test:watch` | Run Vitest in watch mode |
-| `npm run test:e2e` | Run the local Supabase release gate, then the Playwright end-to-end suite |
+The application supports anonymous demo sessions through Supabase.
 
-## 📂 Project Structure
+To use Explore Demo:
 
-```
-src/
-├── components/       # Shared UI components (modals, layout, ui/ primitives)
-│   ├── dashboard/    # Dashboard-specific widgets & charts
-│   └── students/     # Student roster, cards, tables, and modals
-├── pages/            # Route-level pages (Dashboard, Income, Expenses, Reports, ...)
-├── store/            # Zustand stores (finance, students, language)
-├── services/         # Supabase-backed data access (income, expenses, transfers, ...)
-├── lib/              # Core domain logic, i18n, backup, student import, demo mode
-├── utils/            # Formatting & calculation helpers (currency, dates, class progression)
-├── types/            # Shared TypeScript types for finance & student domains
-└── test/             # Unit & component tests
+Enable anonymous sign-ins in the Supabase Auth configuration.
 
-supabase/
-├── migrations/       # Ordered SQL migrations (schema, RLS policies, workflows)
-├── preflight/        # Pre/post-migration safety checks for production
-└── tests/            # SQL-level integrity tests
+Apply the included demo-workspace migration.
 
-e2e/                  # Playwright end-to-end specs
-```
+Start the application and select Explore Demo from the authentication screen.
 
-## 🧪 Testing
+The demo workflow can seed, reset, and discard its own isolated workspace.
 
-- **Unit & component tests** (Vitest + Testing Library) cover domain logic like fee calculations, class progression, backup/restore, and student import — run with `npm run test`.
-- **End-to-end tests** (Playwright) exercise real authenticated flows against a local Supabase instance — run with `npm run test:e2e`. This requires a `.env.test.local` with local Supabase credentials, since the release-gate script deliberately refuses to run against anything but `localhost`/`127.0.0.1`.
+✅ Quality Checks
 
-## 🌍 Localization
+The repository includes unit, integration, component, database-oriented, and end-to-end test coverage for important finance and student workflows.
 
-The UI currently ships with full translations for:
-- 🇬🇧 English
-- 🇮🇳 Gujarati (ગુજરાતી)
+# TypeScript validation
+npm run typecheck
 
-Language strings live in `src/lib/i18n.ts`; the active language is persisted via the language store and can be switched from Settings.
+# ESLint
+npm run lint
 
-## 📱 PWA Support
+# Unit / integration tests
+npm run test
 
-The app registers a service worker and ships a web manifest, so it can be installed to a phone's home screen or a desktop and used in standalone, app-like mode.
+# Production build
+npm run build
 
-## ☁️ Deployment
+# End-to-end tests
+npm run test:e2e
 
-The project includes a `vercel.json` rewrite rule for single-page-app routing, so it deploys to [Vercel](https://vercel.com/) out of the box — connect the repo, set the three `VITE_SUPABASE_*` environment variables in the project settings, and deploy. Any other static host that supports SPA rewrites (Netlify, Cloudflare Pages, etc.) will work just as well.
+Local database release gate
 
-## 🔒 License
+The E2E workflow runs a local finance integrity gate before Playwright:
 
-This is a private, internal project built for Little Flowers School. All rights reserved — not licensed for external use or redistribution.
+npm run test:local-db
 
----
+This script is intentionally guarded so it only accepts a loopback Supabase URL such as localhost or 127.0.0.1.
+
+🧪 Test Coverage Areas
+
+The test suite includes coverage for areas such as:
+
+Financial-domain calculations
+
+Account balances and money movement
+
+Student fee calculations
+
+Student spreadsheet import validation
+
+Backup parsing and restoration behavior
+
+Authentication and initial data loading
+
+Setup redirects
+
+Current and previous-year fee workflows
+
+Payment recording and reversal behavior
+
+Student ordering and class progression
+
+Dashboard calculations and medium-level summaries
+
+English/Gujarati UI behavior
+
+Demo workspace behavior
+
+Authenticated finance journeys through Playwright
+
+💾 Backup & Restore
+
+The settings area supports exporting application data to a dedicated backup file and restoring it through a controlled database workflow.
+
+Backups include the core finance tables and use the .lfbackup extension so application backups are clearly distinguishable from normal exports.
+
+📌 Engineering Focus
+
+This project was developed with emphasis on:
+
+Translating real administrative workflows into clear software models
+
+Keeping financial calculations deterministic and testable
+
+Separating UI, state, services, and database responsibilities
+
+Preserving historical academic-year context
+
+Designing for non-technical administrative users
+
+Maintaining data consistency across connected student and finance workflows
+
+Providing responsive interfaces for desktop and smaller screens
+
+Supporting bilingual day-to-day use without duplicating application logic
+
+🗺️ Current Status
+
+The application is under active development. The repository already contains the core finance, student-fee, reporting, data-integrity, backup, demo, and automated-testing workflows, with further refinement focused on usability, operational reliability, and maintainability.
 
 <div align="center">
-Made with care for keeping a school's books honest and simple. 🏫
+
+Built around a simple principle: school finance data should be understandable, traceable, and difficult to accidentally corrupt.
+
 </div>
