@@ -102,7 +102,7 @@ export function AddExpenseModal({ isOpen, onClose, editEntry, onEditExisting }: 
     if (!accountId) errs.accountId = 'Select an account';
     if (!academicYearId) errs.year = 'No academic year found for this date';
 
-    // Block home expenses from school bank accounts
+    // Block home expenses from school bank accounts.
     if (expenseType === 'home') {
       const selectedAcc = accounts.find((a) => a.id === accountId);
       if (selectedAcc?.type === 'school_bank') {
