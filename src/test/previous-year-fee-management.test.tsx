@@ -54,6 +54,13 @@ describe('Previous-Year Fee Simplification & Live Propagation', () => {
           status: 'active',
           notes: '',
         },
+        {
+          id: 'stu-2',
+          fullName: 'Ravi Patel',
+          admissionNumber: 'GR-502',
+          status: 'active',
+          notes: '',
+        },
       ],
       enrollments: [
         {
@@ -63,6 +70,21 @@ describe('Previous-Year Fee Simplification & Live Propagation', () => {
           className: 'Class 5',
           medium: 'english',
           annualFeeAmount: 20000,
+          additionalOutstandingAmount: 0,
+          openingCollectedCash: 0,
+          openingCollectedUpi: 0,
+          openingCollectedOther: 0,
+          openingSnapshotDate: null,
+          status: 'active',
+          notes: '',
+        },
+        {
+          id: 'enr-current-2',
+          studentId: 'stu-2',
+          academicYearId: 'ay-2026',
+          className: 'Class 5',
+          medium: 'english',
+          annualFeeAmount: 80000,
           additionalOutstandingAmount: 0,
           openingCollectedCash: 0,
           openingCollectedUpi: 0,
@@ -312,5 +334,66 @@ describe('Previous-Year Fee Simplification & Live Propagation', () => {
     expect(screen.getByText(/Previous-Year Outstanding/i)).toBeInTheDocument();
     expect(screen.getAllByText('₹4,500').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Record Previous-Year Payment/i }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('Dashboard reflects student roster as source of truth: displays Fully Cleared when students have 0 pending even if academic year had 2000', () => {
+    // Academic year ay-2025 has carryForwardFees: 2000 or target 2000
+    useFinanceStore.setState({
+      academicYears: [
+        {
+          id: 'ay-2025',
+          label: '2025-26',
+          startDate: new Date('2025-06-01'),
+          endDate: new Date('2026-05-31'),
+          targetTuitionFees: 2000,
+          status: 'closed',
+          carryForwardFees: 2000,
+        },
+        {
+          id: 'ay-2026',
+          label: '2026-27',
+          startDate: new Date('2026-06-01'),
+          endDate: new Date('2027-05-31'),
+          targetTuitionFees: 30000,
+          status: 'active',
+          carryForwardFees: 0,
+        },
+      ],
+      currentYearId: 'ay-2026',
+    });
+
+    // Student has 0 previous pending (additionalOutstandingAmount: 0, no historical enrollment pending)
+    useStudentStore.setState({
+      enrollments: [
+        {
+          id: 'enr-current',
+          studentId: 'stu-1',
+          academicYearId: 'ay-2026',
+          className: 'Class 5',
+          medium: 'english',
+          annualFeeAmount: 30000,
+          additionalOutstandingAmount: 0,
+          openingCollectedCash: 10000,
+          openingCollectedUpi: 0,
+          openingCollectedOther: 0,
+          openingSnapshotDate: null,
+          status: 'active',
+          notes: '',
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Dashboard />
+      </MemoryRouter>
+    );
+
+    // Dashboard must show Last Year's Pending Fees as Fully Cleared (₹0), not ₹2,000!
+    expect(screen.getByText(/Fully Cleared/i)).toBeInTheDocument();
+    expect(screen.queryByText('AY 2025-26')).not.toBeInTheDocument();
+
+    // Needs Attention should not report previous year fees pending
+    expect(screen.queryByText(/Prev Year Fees Pending/i)).not.toBeInTheDocument();
   });
 });

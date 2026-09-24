@@ -41,6 +41,20 @@ export default function IncomePage() {
 
   const currentYear = academicYears.find((y) => y.id === currentYearId);
 
+  const activeCurrentEnrollments = useMemo(
+    () => enrollments.filter((e) => e.academicYearId === currentYearId && e.status === 'active'),
+    [enrollments, currentYearId]
+  );
+
+  const rosterAnnualTarget = useMemo(
+    () => activeCurrentEnrollments.reduce((sum, e) => sum + (e.annualFeeAmount || 0), 0),
+    [activeCurrentEnrollments]
+  );
+
+  const effectiveTarget = activeCurrentEnrollments.length > 0
+    ? rosterAnnualTarget
+    : (currentYear?.targetTuitionFees || 0);
+
   const stats = useMemo(() => {
     const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
     const tuitionTotal = yearIncome
@@ -48,7 +62,7 @@ export default function IncomePage() {
       .reduce((s, i) => s + i.amount, 0);
     const incomeBreakdown = getIncomeBreakdown(yearIncome);
     const totalIncome = incomeBreakdown.total;
-    const target = currentYear?.targetTuitionFees || 0;
+    const target = effectiveTarget;
 
     // Build per-category breakdown for the summary tab
     const categoryBreakdown = [
@@ -59,7 +73,7 @@ export default function IncomePage() {
     ].filter((item) => item.amount > 0);
 
     return { tuitionTotal, totalIncome, target, categoryBreakdown, incomeBreakdown };
-  }, [incomeEntries, currentYearId, currentYear]);
+  }, [incomeEntries, currentYearId, effectiveTarget]);
 
   const pendingYears = useMemo(() => {
     return academicYears
@@ -68,7 +82,7 @@ export default function IncomePage() {
         const yearRosterPending = enrollments
           .filter((e) => e.academicYearId === y.id && e.status === 'active')
           .reduce((sum, e) => sum + getStudentFeeSummary(e, incomeEntries).pending, 0);
-        const totalRemaining = Math.max(info.remaining, yearRosterPending);
+        const totalRemaining = enrollments.length > 0 ? yearRosterPending : info.remaining;
         const startYear = y.startDate.getFullYear();
         const yearsOverdue = new Date().getFullYear() - startYear - 1;
         return {
@@ -116,7 +130,7 @@ export default function IncomePage() {
   }
 
   function openEditTarget() {
-    setTargetValue((currentYear?.targetTuitionFees || 0).toString());
+    setTargetValue(effectiveTarget.toString());
     setShowTargetModal(true);
   }
 
@@ -424,6 +438,23 @@ export default function IncomePage() {
           />
           {targetValue && (
             <p className="text-xs text-muted-foreground">{formatINR(parseFloat(targetValue) || 0)}</p>
+          )}
+          {activeCurrentEnrollments.length > 0 && (
+            <div className="rounded-lg bg-muted/50 p-2.5 text-xs space-y-1.5 border">
+              <div className="flex justify-between items-center text-muted-foreground">
+                <span>Enrolled Students' Total Fees:</span>
+                <span className="font-mono font-bold text-foreground">{formatINR(rosterAnnualTarget)}</span>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full text-xs h-7 text-primary hover:text-primary hover:bg-primary/10"
+                onClick={() => setTargetValue(rosterAnnualTarget.toString())}
+              >
+                Sync to Current Students ({formatINR(rosterAnnualTarget)})
+              </Button>
+            </div>
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowTargetModal(false)} className="flex-1">{t('actionCancel')}</Button>

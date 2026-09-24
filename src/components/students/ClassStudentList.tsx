@@ -362,7 +362,8 @@ export function ClassStudentList({
               ) : (
                 sortedRows.map((row) => {
                   const { student, enrollment, fees, previous } = row;
-                  const totalStudentDue = fees.pending + previous;
+                  const studentCurrentPending = Math.max(0, enrollment.annualFeeAmount - fees.collected);
+                  const totalStudentDue = studentCurrentPending + previous;
 
                   return (
                     <TableRow
@@ -391,9 +392,9 @@ export function ClassStudentList({
 
                       {/* This Year Pending */}
                       <TableCell className="py-3 text-right">
-                        {fees.pending > 0 ? (
+                        {studentCurrentPending > 0 ? (
                           <span className="font-bold text-xs text-amber-600 dark:text-amber-400">
-                            {formatINR(fees.pending)}
+                            {formatINR(studentCurrentPending)}
                           </span>
                         ) : (
                           <span className="text-muted-foreground text-xs">—</span>
@@ -429,7 +430,16 @@ export function ClassStudentList({
 
                       {/* Status */}
                       <TableCell className="py-3 text-center">
-                        <StudentFeeBadge status={fees.status} size="sm" />
+                        <StudentFeeBadge
+                          status={
+                            totalStudentDue <= 0.005
+                              ? 'paid'
+                              : fees.collected > 0.005
+                              ? 'partially_paid'
+                              : 'not_paid'
+                          }
+                          size="sm"
+                        />
                       </TableCell>
 
                       {/* Actions */}

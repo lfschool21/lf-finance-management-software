@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Student, StudentEnrollment, RosterImportRow } from '@/types/students';
 import * as studentsService from '@/services/students';
 import { supabase } from '@/services/supabase';
+import { useFinanceStore } from './finance-store';
 
 const mapStudent = (row: studentsService.DbStudent): Student => ({
   id: row.id, admissionNumber: row.admission_number || '', fullName: row.full_name,
@@ -30,6 +31,18 @@ interface StudentState {
   deleteEnrollment: (enrollmentId: string) => Promise<void>;
   importRoster: (academicYearId: string, rows: RosterImportRow[]) => Promise<{ added: number; updated: number; failed: number; total: number }>;
   removeAllStudents: (options?: studentsService.RemoveAllStudentsOptions) => Promise<{ removedStudents: number; removedEnrollments: number }>;
+}
+
+async function syncAcademicYearTarget(academicYearId: string) {
+  try {
+    const activeAnnualFees = useStudentStore.getState().enrollments
+      .filter((e) => e.academicYearId === academicYearId && e.status === 'active')
+      .reduce((sum, e) => sum + (e.annualFeeAmount || 0), 0);
+    await supabase.from('academic_years').update({ target_tuition_fees: activeAnnualFees }).eq('id', academicYearId);
+    await useFinanceStore.getState().refreshAcademicYears().catch(() => {});
+  } catch {
+    // Non-blocking in case of network or mock test environments
+  }
 }
 
 export const useStudentStore = create<StudentState>((set, get) => ({
@@ -123,26 +136,39 @@ export const useStudentStore = create<StudentState>((set, get) => ({
         ? state.enrollments.map((item) => item.id === savedEnrollment.id ? savedEnrollment : item)
         : [...state.enrollments, savedEnrollment],
     }));
+    await useFinanceStore.getState().refreshAcademicYears().catch(() => {});
   },
   archiveStudent: async (studentId) => {
+    const affectedEnrollments = get().enrollments.filter(
+      (e) => e.studentId === studentId && e.status === 'active'
+    );
+    const affectedYearIds = Array.from(new Set(affectedEnrollments.map((e) => e.academicYearId)));
     const { error } = await studentsService.archive(studentId);
     if (error) throw error;
     set((state) => ({
       students: state.students.map((student) => student.id === studentId ? { ...student, status: 'inactive' } : student),
       enrollments: state.enrollments.map((enrollment) => enrollment.studentId === studentId && enrollment.status === 'active' ? { ...enrollment, status: 'inactive' } : enrollment),
     }));
+    for (const yearId of affectedYearIds) {
+      await syncAcademicYearTarget(yearId);
+    }
   },
   deleteEnrollment: async (enrollmentId) => {
+    const target = get().enrollments.find((e) => e.id === enrollmentId);
     const { error } = await studentsService.deleteEnrollment(enrollmentId);
     if (error) throw error;
     set((state) => ({
       enrollments: state.enrollments.filter((enrollment) => enrollment.id !== enrollmentId),
     }));
+    if (target) {
+      await syncAcademicYearTarget(target.academicYearId);
+    }
   },
   importRoster: async (academicYearId, rows) => {
     const result = await studentsService.importRoster(academicYearId, rows);
     if (result.error || !result.data) throw result.error || new Error('Import failed');
     await get().init(true);
+    await useFinanceStore.getState().refreshAcademicYears().catch(() => {});
     return result.data;
   },
   removeAllStudents: async (options) => {
@@ -151,6 +177,15 @@ export const useStudentStore = create<StudentState>((set, get) => ({
       const result = await studentsService.removeAll(options);
       if (result.error) throw result.error;
       await get().init(true);
+      if (options?.academicYearId) {
+        await supabase.from('academic_years').update({ target_tuition_fees: 0 }).eq('id', options.academicYearId);
+      } else {
+        const userId = get().initializedForUserId;
+        if (userId) {
+          await supabase.from('academic_years').update({ target_tuition_fees: 0 }).eq('user_id', userId);
+        }
+      }
+      await useFinanceStore.getState().refreshAcademicYears().catch(() => {});
       return result;
     } catch (error) {
       set({

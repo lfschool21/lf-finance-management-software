@@ -207,7 +207,7 @@ export function StudentImportWizard({
     try {
       const value = await importRoster(effectiveYearId, valid);
       const totalObligations = valid.reduce(
-        (sum, r) => sum + (Number(r.annualFeeAmount) || 0) + (Number(r.additionalOutstandingAmount) || 0),
+        (sum, r) => sum + (Number(r.annualFeeAmount) || 0),
         0
       );
       if (effectiveYearId && totalObligations > 0) {

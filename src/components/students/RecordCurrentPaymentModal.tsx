@@ -168,7 +168,7 @@ export function RecordCurrentPaymentModal({
           .filter((e) => e.academicYearId === targetYearId)
           .reduce(
             (sum, e) =>
-              sum + (e.annualFeeAmount || 0) + (e.additionalOutstandingAmount || 0),
+              sum + (e.annualFeeAmount || 0),
             0
           );
         const needed = Math.max(studentTotal, currentPaidAmt + parsedAmount);

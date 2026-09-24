@@ -231,7 +231,7 @@ export function StudentTable({
 
                 {/* Total Fee */}
                 <TableCell className="py-3.5 text-right font-mono text-xs text-foreground">
-                  {formatINR(fees.obligation)}
+                  {formatINR(enrollment.annualFeeAmount)}
                 </TableCell>
 
                 {/* Collected */}
@@ -241,8 +241,10 @@ export function StudentTable({
 
                 {/* Current Pending */}
                 <TableCell className="py-3.5 text-right font-mono text-xs">
-                  {fees.pending > 0 ? (
-                    <span className="font-bold text-sm text-warning">{formatINR(fees.pending)}</span>
+                  {Math.max(0, enrollment.annualFeeAmount - fees.collected) > 0 ? (
+                    <span className="font-bold text-sm text-warning">
+                      {formatINR(Math.max(0, enrollment.annualFeeAmount - fees.collected))}
+                    </span>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}

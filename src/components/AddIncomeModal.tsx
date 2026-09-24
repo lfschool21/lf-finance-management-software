@@ -117,7 +117,9 @@ export function AddIncomeModal({
     const studentCarry = enrollments
       .filter((e) => (!selectedStudentId || e.studentId === selectedStudentId) && e.academicYearId !== year.id)
       .reduce((sum, e) => sum + (e.additionalOutstandingAmount || 0), 0);
-    return Math.max(yearRemaining, rosterRemaining, studentCarry);
+    return enrollments.length > 0
+      ? Math.max(rosterRemaining, studentCarry)
+      : yearRemaining;
   }, [editEntry?.id, enrollments, incomeEntries, selectedStudentId]);
 
   const pendingYears = useMemo(() => {
@@ -361,7 +363,7 @@ export function AddIncomeModal({
           const currentPaid = getFeeCollected(incomeEntries, oblYear.id, editEntry?.id);
           const studentTotal = enrollments
             .filter((e) => e.academicYearId === targetObligationYearId)
-            .reduce((sum, e) => sum + (e.annualFeeAmount || 0) + (e.additionalOutstandingAmount || 0), 0);
+            .reduce((sum, e) => sum + (e.annualFeeAmount || 0), 0);
           const needed = Math.max(studentTotal, currentPaid + amtVal);
           if (oblYear.targetTuitionFees < needed) {
             try {

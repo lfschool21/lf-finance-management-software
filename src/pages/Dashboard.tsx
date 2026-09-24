@@ -8,7 +8,7 @@ import {
   getRecoverableSummary,
   isPreviousAcademicYear,
 } from '@/lib/finance-domain';
-import { getStudentFeeSummary, summarizeRoster } from '@/lib/student-fees';
+import { getStudentFeeSummary, getStudentPreviousPending, summarizeRoster } from '@/lib/student-fees';
 
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DashboardSummary } from '@/components/dashboard/DashboardSummary';
@@ -74,9 +74,9 @@ export default function Dashboard() {
       0
     );
     const currentTarget =
-      currentYear?.targetTuitionFees && currentYear.targetTuitionFees > 0
-        ? currentYear.targetTuitionFees
-        : rosterAnnualTarget;
+      activeCurrentEnrollments.length > 0
+        ? rosterAnnualTarget
+        : (currentYear?.targetTuitionFees || 0);
     const currentRemaining = Math.max(0, currentTarget - currentTuitionCollected);
     const feeProgress =
       currentTarget > 0
@@ -84,27 +84,22 @@ export default function Dashboard() {
         : 0;
 
     // Student roster previous year's pending balance:
-    // 1) From active current year enrollments with additionalOutstandingAmount
-    const rosterCurrentYearLastYearPending = activeCurrentEnrollments.reduce((sum, e) => {
-      const summary = getStudentFeeSummary(e, incomeEntries);
-      const studentLastYearRemaining = Math.min(
-        e.additionalOutstandingAmount || 0,
-        summary.pending
-      );
-      return sum + studentLastYearRemaining;
-    }, 0);
+    // Unified across all active students using getStudentPreviousPending
+    const totalRosterLastYearPending = activeCurrentEnrollments.reduce(
+      (sum, e) =>
+        sum +
+        getStudentPreviousPending(
+          e.studentId,
+          currentYearId,
+          enrollments,
+          incomeEntries
+        ),
+      0
+    );
     const rosterLastYearTotal = activeCurrentEnrollments.reduce(
       (sum, e) => sum + (e.additionalOutstandingAmount || 0),
       0
     );
-
-    // 2) From actual previous academic year enrollments for active students
-    const rosterHistoricalEnrollmentsPending = enrollments
-      .filter((e) => e.academicYearId !== currentYearId && e.status === 'active')
-      .reduce((sum, e) => sum + getStudentFeeSummary(e, incomeEntries).pending, 0);
-
-    const totalRosterLastYearPending =
-      rosterCurrentYearLastYearPending + rosterHistoricalEnrollmentsPending;
 
     // Academic year level previous pending
     const previousYears = currentYear
@@ -115,7 +110,10 @@ export default function Dashboard() {
         .filter((e) => e.academicYearId === year.id && e.status === 'active')
         .reduce((sum, e) => sum + getStudentFeeSummary(e, incomeEntries).pending, 0);
       const yearInfo = getPendingForYear(year.id);
-      const effectiveRemaining = Math.max(yearInfo.remaining, yearRosterPending);
+      // When student enrollments exist in the system, the student roster is the single source of truth.
+      // If students have cleared their dues (or none were enrolled for this prior year), effectiveRemaining is yearRosterPending.
+      // If no enrollments exist in the software yet, fall back to yearInfo.remaining.
+      const effectiveRemaining = enrollments.length > 0 ? yearRosterPending : yearInfo.remaining;
       return {
         year,
         info: {
@@ -134,7 +132,9 @@ export default function Dashboard() {
     );
 
     // Total Last Year's Pending Fees
-    const lastYearPending = Math.max(previousYearRowsPending, totalRosterLastYearPending);
+    // Roster is authoritative when enrollments exist: if 0, Dashboard displays ₹0 (Fully Cleared)
+    const lastYearPending =
+      enrollments.length > 0 ? totalRosterLastYearPending : previousYearRowsPending;
 
     const schoolExpenses = breakdown.fixedExpenses + breakdown.extraExpenses;
     const recoverablesOutstanding = recoverables.reduce(

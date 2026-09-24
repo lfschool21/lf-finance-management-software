@@ -271,6 +271,13 @@ describe('Dashboard Redesign and Financial Operational Integrity', () => {
     useFinanceStore.setState({
       academicYears: [currentAY],
     });
+    useStudentStore.setState({
+      enrollments: [
+        { ...gujaratiEnrollment1, annualFeeAmount: 500000 },
+        { ...gujaratiEnrollment2, annualFeeAmount: 500000 },
+        { ...englishEnrollment1, annualFeeAmount: 500000 },
+      ],
+    });
 
     // Target 15,00,000; 0 collected; gujaratiEnrollment1 has 5,000 last year pending
     // Total fees to collect = 15,00,000 + 5,000 = 15,05,000 (15.05L)

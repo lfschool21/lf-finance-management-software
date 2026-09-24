@@ -171,6 +171,31 @@ describe('Payment Edit, Delete, and Dashboard Fee Adjustment', () => {
   });
 
   it('adjusts Dashboard with Last Year Remaining Fees and updates when payment is recorded or removed', () => {
+    useStudentStore.setState({
+      students: [
+        testStudent,
+        { id: 'stu-test-2', admissionNumber: 'ADM-998', fullName: 'Second Student', status: 'active', notes: '' },
+      ],
+      enrollments: [
+        testEnrollment,
+        {
+          id: 'enr-test-2',
+          studentId: 'stu-test-2',
+          academicYearId: 'ay-current',
+          className: 'Class 5',
+          medium: 'english',
+          annualFeeAmount: 20000,
+          additionalOutstandingAmount: 0,
+          openingCollectedCash: 0,
+          openingCollectedUpi: 0,
+          openingCollectedOther: 0,
+          openingSnapshotDate: null,
+          status: 'active',
+          notes: '',
+        },
+      ],
+    });
+
     const { rerender } = render(
       <MemoryRouter initialEntries={['/']}>
         <Dashboard />

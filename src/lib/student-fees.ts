@@ -95,6 +95,7 @@ export interface RosterSummary {
   pendingStudents: number;
   fullyPaidStudents: number;
   obligation: number;
+  currentAnnualFee: number;
   collected: number;
   pending: number;
 }
@@ -109,6 +110,7 @@ export function summarizeRoster(enrollments: StudentEnrollment[], incomeEntries:
     pendingStudents: summaries.filter((summary) => summary.pending > EPSILON).length,
     fullyPaidStudents: summaries.filter((summary) => summary.status === 'paid').length,
     obligation: summaries.reduce((sum, summary) => sum + summary.obligation, 0),
+    currentAnnualFee: active.reduce((sum, e) => sum + (e.annualFeeAmount || 0), 0),
     collected: summaries.reduce((sum, summary) => sum + summary.collected, 0),
     pending: summaries.reduce((sum, summary) => sum + summary.pending, 0),
   };

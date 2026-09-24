@@ -91,16 +91,35 @@ export default function ReportsPage() {
   }, [incomeEntries, expenseEntries, selectedMonth]);
 
   const selectedYear = academicYears.find((y) => y.id === effectiveYearId);
+  const selectedYearActiveEnrollments = useMemo(
+    () => enrollments.filter((e) => e.academicYearId === effectiveYearId && e.status === 'active'),
+    [enrollments, effectiveYearId]
+  );
+  const selectedYearRosterTarget = useMemo(
+    () => selectedYearActiveEnrollments.reduce((sum, e) => sum + (e.annualFeeAmount || 0), 0),
+    [selectedYearActiveEnrollments]
+  );
+  const effectiveSelectedYear = useMemo(() => {
+    if (!selectedYear) return undefined;
+    if (selectedYearActiveEnrollments.length > 0) {
+      return {
+        ...selectedYear,
+        targetTuitionFees: selectedYearRosterTarget,
+      };
+    }
+    return selectedYear;
+  }, [selectedYear, selectedYearActiveEnrollments.length, selectedYearRosterTarget]);
+
   const breakdown = useMemo(() => getYearProfitBreakdown(effectiveYearId), [effectiveYearId, getYearProfitBreakdown, incomeEntries, expenseEntries]);
   const yearlyIncomeBreakdown = useMemo(() => getIncomeBreakdown(incomeEntries.filter((entry) => entry.academicYearId === effectiveYearId)), [incomeEntries, effectiveYearId]);
-  const selectedYearIsComplete = selectedYear ? dateKey(selectedYear.endDate) < dateKey(new Date()) : false;
+  const selectedYearIsComplete = effectiveSelectedYear ? dateKey(effectiveSelectedYear.endDate) < dateKey(new Date()) : false;
   const feeStatusAtCutoff = useMemo(
-    () => selectedYear ? getFeeOutstandingAsOf(selectedYear, incomeEntries, selectedYearIsComplete ? selectedYear.endDate : new Date()) : null,
-    [incomeEntries, selectedYear, selectedYearIsComplete],
+    () => effectiveSelectedYear ? getFeeOutstandingAsOf(effectiveSelectedYear, incomeEntries, selectedYearIsComplete ? effectiveSelectedYear.endDate : new Date()) : null,
+    [incomeEntries, effectiveSelectedYear, selectedYearIsComplete],
   );
   const currentFeeStatus = useMemo(
-    () => selectedYear ? getPendingForYear(selectedYear.id) : null,
-    [getPendingForYear, incomeEntries, selectedYear],
+    () => effectiveSelectedYear ? getPendingForYear(effectiveSelectedYear.id) : null,
+    [getPendingForYear, incomeEntries, effectiveSelectedYear],
   );
   const studentReport = useMemo(() => {
     const roster = enrollments.filter((item) => item.academicYearId === effectiveYearId && item.status === 'active');
@@ -382,12 +401,12 @@ export default function ReportsPage() {
 
         <Tabs value={reportTab} onValueChange={setReportTab}>
           <TabsList className="hidden sm:inline-flex w-full justify-start overflow-x-auto sm:w-auto">
-            <TabsTrigger value="monthly">{t('reportTabMonthlyTrends')}</TabsTrigger>
-            <TabsTrigger value="yearly">{t('reportTabProfitLoss')}</TabsTrigger>
-            <TabsTrigger value="alltime">{t('reportTabOverview')}</TabsTrigger>
-            <TabsTrigger value="compare">{t('reportTabYearComparison')}</TabsTrigger>
-            <TabsTrigger value="students">{t('reportTabStudentFees')}</TabsTrigger>
-            <TabsTrigger value="expenses">{t('reportTabCategories')}</TabsTrigger>
+            <TabsTrigger value="monthly" onClick={() => setReportTab('monthly')}>{t('reportTabMonthlyTrends')}</TabsTrigger>
+            <TabsTrigger value="yearly" onClick={() => setReportTab('yearly')}>{t('reportTabProfitLoss')}</TabsTrigger>
+            <TabsTrigger value="alltime" onClick={() => setReportTab('alltime')}>{t('reportTabOverview')}</TabsTrigger>
+            <TabsTrigger value="compare" onClick={() => setReportTab('compare')}>{t('reportTabYearComparison')}</TabsTrigger>
+            <TabsTrigger value="students" onClick={() => setReportTab('students')}>{t('reportTabStudentFees')}</TabsTrigger>
+            <TabsTrigger value="expenses" onClick={() => setReportTab('expenses')}>{t('reportTabCategories')}</TabsTrigger>
           </TabsList>
 
         {/* Monthly Summary — FIX 7 */}
@@ -495,14 +514,14 @@ export default function ReportsPage() {
           <IncomeBreakdownGrid breakdown={yearlyIncomeBreakdown} />
 
           {/* Fee status */}
-          {selectedYear && feeStatusAtCutoff && currentFeeStatus && (() => {
+          {effectiveSelectedYear && feeStatusAtCutoff && currentFeeStatus && (() => {
             const pct = feeStatusAtCutoff.totalOwed > 0
               ? Math.min(100, Math.round((feeStatusAtCutoff.collected / feeStatusAtCutoff.totalOwed) * 100))
               : 0;
             return (
               <div className="rounded-lg border bg-card p-4">
                 <h3 className="text-sm font-semibold">Fee Collection Status {selectedYearIsComplete ? 'at AY End' : 'as of Today'}</h3>
-                <p className="mb-3 text-xs text-muted-foreground">{selectedYearIsComplete ? `Historical snapshot as of ${selectedYear.endDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}. Later payments do not change this snapshot.` : 'Current progress for this active academic year.'}</p>
+                <p className="mb-3 text-xs text-muted-foreground">{selectedYearIsComplete ? `Historical snapshot as of ${effectiveSelectedYear.endDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}. Later payments do not change this snapshot.` : 'Current progress for this active academic year.'}</p>
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Collected by AY End</span>
@@ -510,7 +529,7 @@ export default function ReportsPage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Target (this year)</span>
-                    <span className="font-mono font-medium">{formatINR(selectedYear.targetTuitionFees)}</span>
+                    <span className="font-mono font-medium">{formatINR(effectiveSelectedYear.targetTuitionFees)}</span>
                   </div>
                   {feeStatusAtCutoff.carryForward > 0 && (
                     <div className="flex justify-between text-sm">
@@ -749,7 +768,7 @@ export default function ReportsPage() {
 
         <TabsContent value="students" className="mt-4 space-y-4">
           <div className="flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between"><Select value={effectiveYearId} onValueChange={setSelectedYearId}><SelectTrigger className="w-full min-[420px]:w-48"><SelectValue /></SelectTrigger><SelectContent>{academicYears.map((year) => <SelectItem key={year.id} value={year.id}>AY {year.label}</SelectItem>)}</SelectContent></Select><Button variant="outline" onClick={exportStudentFeesCsv}><Download className="mr-2 h-4 w-4"/>Export Student Fees CSV</Button></div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MiniCard label="Active Students" value={String(studentReport.summary.totalStudents)} color="text-primary"/><MiniCard label="Student Fee Obligation" value={formatINR(studentReport.summary.obligation)} color="text-primary"/><MiniCard label="Current Fees Pending" value={formatINR(studentReport.summary.pending)} color="text-warning"/><MiniCard label="Previous-Year Fees Pending" value={formatINR(studentReport.previousPending)} color="text-warning"/><MiniCard label="Fully Paid Students" value={String(studentReport.summary.fullyPaidStudents)} color="text-income"/><MiniCard label="Previous-Year Fees Received This AY" value={formatINR(studentReport.previousReceived)} color="text-income"/><MiniCard label="Cash Payments Recorded in App" value={formatINR(studentReport.cashActual)} color="text-income"/><MiniCard label="UPI Payments Recorded in App" value={formatINR(studentReport.upiActual)} color="text-income"/><MiniCard label="Bank / Cheque / Other" value={formatINR(studentReport.otherActual)} color="text-primary"/><MiniCard label="Unknown / Not Recorded" value={formatINR(studentReport.unknownActual)} color="text-muted-foreground"/></div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MiniCard label="Active Students" value={String(studentReport.summary.totalStudents)} color="text-primary"/><MiniCard label="Current-Year Tuition Fees" value={formatINR(studentReport.summary.currentAnnualFee)} color="text-primary"/><MiniCard label="Student Fee Obligation" value={formatINR(studentReport.summary.obligation)} color="text-primary"/><MiniCard label="Current Fees Pending" value={formatINR(studentReport.summary.pending)} color="text-warning"/><MiniCard label="Previous-Year Fees Pending" value={formatINR(studentReport.previousPending)} color="text-warning"/><MiniCard label="Fully Paid Students" value={String(studentReport.summary.fullyPaidStudents)} color="text-income"/><MiniCard label="Previous-Year Fees Received This AY" value={formatINR(studentReport.previousReceived)} color="text-income"/><MiniCard label="Cash Payments Recorded in App" value={formatINR(studentReport.cashActual)} color="text-income"/><MiniCard label="UPI Payments Recorded in App" value={formatINR(studentReport.upiActual)} color="text-income"/><MiniCard label="Bank / Cheque / Other" value={formatINR(studentReport.otherActual)} color="text-primary"/><MiniCard label="Unknown / Not Recorded" value={formatINR(studentReport.unknownActual)} color="text-muted-foreground"/></div>
           <div className="grid gap-3 md:grid-cols-2">{([['English Medium',studentReport.english],['Gujarati Medium',studentReport.gujarati]] as const).map(([label,value]) => <div key={label} className="rounded-lg border bg-card p-4"><div className="flex items-center justify-between"><h3 className="font-semibold">{label}</h3><span className="text-sm">{value.totalStudents} students</span></div><div className="mt-3 grid grid-cols-3 gap-2 text-xs"><span>Obligation<strong className="money-fit block font-mono text-sm">{formatINR(value.obligation)}</strong></span><span>Collected<strong className="money-fit block font-mono text-sm text-income">{formatINR(value.collected)}</strong></span><span>Pending<strong className="money-fit block font-mono text-sm text-warning">{formatINR(value.pending)}</strong></span></div><p className="mt-2 text-xs text-muted-foreground">{value.obligation ? Math.round(value.collected/value.obligation*100) : 0}% collected</p></div>)}</div>
           <div className="rounded-lg border bg-card"><div className="border-b p-4"><h3 className="font-semibold">Fees by Class</h3></div><div className="overflow-auto"><table className="w-full min-w-[680px] text-sm"><thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="p-3">Class</th><th>Students</th><th>Total Fee</th><th>Collected</th><th>Pending</th><th>Collection %</th></tr></thead><tbody>{studentReport.classes.map((item) => <tr key={item.className} className="border-b last:border-0"><td className="p-3 font-medium">{item.className}</td><td>{item.totalStudents} <span className="text-xs text-muted-foreground">({item.english} Eng · {item.gujarati} Guj)</span></td><td>{formatINR(item.obligation)}</td><td className="text-income">{formatINR(item.collected)}</td><td className="text-warning">{formatINR(item.pending)}</td><td>{item.obligation ? Math.round(item.collected/item.obligation*100) : 0}%</td></tr>)}</tbody></table></div></div>
           <div className="rounded-lg border bg-card"><div className="border-b p-4"><h3 className="font-semibold">Pending Student Fees</h3><p className="text-xs text-muted-foreground">Sorted by highest total pending</p></div><div className="overflow-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="p-3">Student</th><th>Class</th><th>Medium</th><th>Current Pending</th><th>Previous Pending</th><th>Total Pending</th></tr></thead><tbody>{studentReport.rows.filter((item) => item.fees.pending + item.previousPending > 0).map(({ student,enrollment,fees,previousPending }) => <tr key={enrollment.id} className="border-b last:border-0"><td className="p-3 font-medium">{student.fullName}<span className="block text-xs font-normal text-muted-foreground">{student.admissionNumber || 'No admission number'}</span></td><td>{enrollment.className}</td><td>{MEDIUM_LABELS[enrollment.medium]}</td><td>{formatINR(fees.pending)}</td><td>{formatINR(previousPending)}</td><td className="font-semibold text-warning">{formatINR(fees.pending+previousPending)}</td></tr>)}</tbody></table></div></div>
