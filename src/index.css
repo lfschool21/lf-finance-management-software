@@ -167,7 +167,7 @@
     pointer-events: auto !important;
   }
 
-  /* Ensure Radix select dropdown viewport handles scrolling properly across all screens */
+  /* Ensure Radix select dropdown viewport handles scrolling properly across all screens. */
   [data-radix-select-viewport] {
     max-height: min(24rem, var(--radix-select-content-available-height, 24rem));
     overflow-y: auto !important;
