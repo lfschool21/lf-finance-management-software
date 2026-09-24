@@ -45,6 +45,7 @@ export function StudentOverview({
   gujaratiStats,
   englishStats,
   summary,
+  unassignedTuition = 0,
 }: StudentOverviewProps) {
   const { t } = useTranslation();
 
@@ -87,7 +88,7 @@ export function StudentOverview({
   const activePct =
     activeTarget > 0 ? Math.min(100, Math.round((effectiveCollected / activeTarget) * 100)) : 0;
 
-  const totalCombinedCollected = gujStats.collected + engStats.collected;
+  const totalCombinedCollected = gujStats.collected + engStats.collected + unassignedTuition;
 
   const mediumLabel = isGujarati
     ? t('gujaratiMediumSummary') || 'Gujarati Medium Summary'
@@ -116,6 +117,11 @@ export function StudentOverview({
           <div className="flex items-center gap-1.5 self-start sm:self-auto px-2.5 py-1 rounded-lg bg-muted/60 border text-xs font-mono-nums">
             <span className="text-muted-foreground">Combined Collected:</span>
             <span className="font-bold text-income">{formatINR(totalCombinedCollected)}</span>
+            {unassignedTuition > 0 && (
+              <span className="text-[10px] text-muted-foreground ml-1" title="Includes unassigned general tuition payments">
+                (incl. {formatINR(unassignedTuition)} unassigned)
+              </span>
+            )}
           </div>
         </div>
 

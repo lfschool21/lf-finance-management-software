@@ -18,7 +18,7 @@ import type { IncomeEntry } from '@/types/finance';
 import { TUITION_CATEGORY, LUNCH_CATEGORY, OTHER_CATEGORY } from '@/types/finance';
 import { getIncomeBreakdown, isPreviousAcademicYear, parseNonNegativeAmount } from '@/lib/finance-domain';
 import { useStudentStore } from '@/store/student-store';
-import { getStudentFeeSummary } from '@/lib/student-fees';
+import { getStudentFeeSummary, getStudentPreviousPending } from '@/lib/student-fees';
 import { MEDIUM_LABELS } from '@/types/students';
 
 export default function IncomePage() {
@@ -54,6 +54,14 @@ export default function IncomePage() {
   const effectiveTarget = activeCurrentEnrollments.length > 0
     ? rosterAnnualTarget
     : (currentYear?.targetTuitionFees || 0);
+
+  // Total roster previous-year pending
+  const totalRosterLastYearPending = useMemo(() => {
+    return activeCurrentEnrollments.reduce(
+      (sum, e) => sum + getStudentPreviousPending(e.studentId, currentYearId, enrollments, incomeEntries),
+      0
+    );
+  }, [activeCurrentEnrollments, currentYearId, enrollments, incomeEntries]);
 
   const stats = useMemo(() => {
     const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
@@ -178,20 +186,14 @@ export default function IncomePage() {
     setCarrySaving(false);
   }
 
-  const currentEnrollmentCarryPending = useMemo(() => {
-    return enrollments
-      .filter((e) => e.academicYearId === currentYearId && e.status === 'active')
-      .reduce((sum, e) => {
-        const summary = getStudentFeeSummary(e, incomeEntries);
-        return sum + Math.min(e.additionalOutstandingAmount || 0, summary.pending);
-      }, 0);
-  }, [enrollments, currentYearId, incomeEntries]);
-
+  const currentYearTuitionRemaining = Math.max(0, stats.target - stats.tuitionTotal);
   const feeProgress = stats.target > 0 ? Math.round((stats.tuitionTotal / stats.target) * 100) : 0;
   const previousYearsPendingSum = pendingYears.reduce((sum, year) => sum + year.totalRemaining, 0);
-  const previousPendingTotal = previousYearsPendingSum + currentEnrollmentCarryPending;
+  const previousPendingTotal = activeCurrentEnrollments.length > 0
+    ? totalRosterLastYearPending
+    : previousYearsPendingSum;
   const feeCashCollected = stats.tuitionTotal + stats.incomeBreakdown.oldFees;
-  const totalFeesStillToCollect = Math.max(0, stats.target - stats.tuitionTotal) + previousPendingTotal;
+  const totalFeesStillToCollect = currentYearTuitionRemaining + previousPendingTotal;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -211,14 +213,14 @@ export default function IncomePage() {
         <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 lg:grid-cols-3">
           <StatCard title={t('currentYearTuitionTarget')} value={formatINRAbbr(stats.target)} fullValue={formatINR(stats.target)} icon={TrendingUp} variant="balance" />
           <StatCard title={t('currentYearTuitionCollected')} value={formatINRAbbr(stats.tuitionTotal)} fullValue={formatINR(stats.tuitionTotal)} icon={IndianRupee} variant="income" />
-          <StatCard title={t('currentYearTuitionRemaining')} value={formatINRAbbr(Math.max(0, stats.target - stats.tuitionTotal))} fullValue={formatINR(Math.max(0, stats.target - stats.tuitionTotal))} icon={Clock} variant="pending" />
+          <StatCard title={t('currentYearTuitionRemaining')} value={formatINRAbbr(currentYearTuitionRemaining)} fullValue={formatINR(currentYearTuitionRemaining)} icon={Clock} variant="pending" />
           <StatCard title={t('prevYearFeesReceivedThisAY')} value={formatINRAbbr(stats.incomeBreakdown.oldFees)} fullValue={formatINR(stats.incomeBreakdown.oldFees)} icon={IndianRupee} variant="income" />
           <StatCard title={t('prevYearFeesStillPending')} value={formatINRAbbr(previousPendingTotal)} fullValue={formatINR(previousPendingTotal)} icon={Clock} variant="pending" />
           <StatCard title={t('totalCashIncome')} value={formatINRAbbr(stats.totalIncome)} fullValue={formatINR(stats.totalIncome)} icon={TrendingUp} variant="income" />
         </div>
         <div className="grid gap-3 border-t pt-3 min-[420px]:grid-cols-2">
           <SummaryMetric label={t('feeCashCollectedThisAY')} value={feeCashCollected} tone="income" />
-          <SummaryMetric label={t('totalFeesStillToCollect')} value={totalFeesStillToCollect} tone="warning" />
+          <SummaryMetric label={t('totalFeesStillToCollect')} value={totalFeesStillToCollect} tone={totalFeesStillToCollect > 0 ? 'warning' : 'income'} />
         </div>
       </section>
 
@@ -243,7 +245,7 @@ export default function IncomePage() {
           <div className="h-2 rounded-full bg-income transition-all" style={{ width: `${Math.min(100, feeProgress)}%` }} />
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          {feeProgress}% {t('collectedSoFar').toLowerCase()} • {formatINR(Math.max(0, stats.target - stats.tuitionTotal))} {t('remainingWord')}
+          {feeProgress}% {t('collectedSoFar').toLowerCase()} • {formatINR(currentYearTuitionRemaining)} {t('remainingWord')}
         </p>
       </div>
 

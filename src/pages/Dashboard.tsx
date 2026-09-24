@@ -77,7 +77,9 @@ export default function Dashboard() {
       activeCurrentEnrollments.length > 0
         ? rosterAnnualTarget
         : (currentYear?.targetTuitionFees || 0);
+
     const currentRemaining = Math.max(0, currentTarget - currentTuitionCollected);
+
     const feeProgress =
       currentTarget > 0
         ? Math.min(100, Math.round((currentTuitionCollected / currentTarget) * 100))

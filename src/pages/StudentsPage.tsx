@@ -161,6 +161,18 @@ export default function StudentsPage() {
 
   const activeCollected = activeMedium === 'gujarati' ? gujaratiStats.collected : englishStats.collected;
 
+  // Unassigned tuition: recorded in finance with category 'Tuition Fees' but not linked to student
+  const unassignedCurrentTuition = useMemo(() => {
+    const currentYearIncome = incomeEntries.filter((i) => i.academicYearId === yearId);
+    const recordedTuition = currentYearIncome
+      .filter((i) => i.category === 'Tuition Fees' && !i.isLateCollection)
+      .reduce((sum, i) => sum + i.amount, 0);
+    const linkedTuition = currentYearIncome
+      .filter((i) => !i.isLateCollection && i.studentEnrollmentId)
+      .reduce((sum, i) => sum + i.amount, 0);
+    return Math.max(0, recordedTuition - linkedTuition);
+  }, [incomeEntries, yearId]);
+
   // Medium-scoped roster
   const mediumScopedRoster = useMemo(() => {
     return activeMedium === 'gujarati' ? gujaratiRoster : englishRoster;
@@ -332,6 +344,7 @@ export default function StudentsPage() {
             onMediumChange={handleMediumChange}
             gujaratiStats={gujaratiStats}
             englishStats={englishStats}
+            unassignedTuition={unassignedCurrentTuition}
           />
 
           {/* Class Cards Grid */}

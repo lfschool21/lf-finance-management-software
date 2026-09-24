@@ -163,10 +163,19 @@ export default function StudentDetailPage() {
           return timeB - timeA;
         })[0];
       if (prevYear) {
-        const prevPending = Math.min(
-          current.additionalOutstandingAmount,
-          currentSummary ? currentSummary.pending : current.additionalOutstandingAmount
-        );
+        const latePaid = incomeEntries
+          .filter(
+            (entry) =>
+              entry.category === 'Tuition Fees' &&
+              entry.isLateCollection &&
+              (entry.studentEnrollmentId === current.id ||
+                studentEnrollments.some((e) => e.id === entry.studentEnrollmentId))
+          )
+          .reduce((sum, entry) => sum + entry.amount, 0);
+        const prevPending = Math.max(0, current.additionalOutstandingAmount - latePaid);
+        const pct = current.additionalOutstandingAmount > 0
+          ? Math.min(100, Math.round((latePaid / current.additionalOutstandingAmount) * 100))
+          : 0;
         separate.push({
           enrollment: {
             ...current,
@@ -179,12 +188,12 @@ export default function StudentDetailPage() {
           year: prevYear,
           summary: {
             obligation: current.additionalOutstandingAmount,
-            collected: 0,
+            collected: latePaid,
             openingCollected: 0,
-            recordedCollected: 0,
+            recordedCollected: latePaid,
             pending: prevPending,
-            status: prevPending <= 0 ? 'paid' : 'not_paid',
-            collectionPercent: 0,
+            status: prevPending <= 0 ? 'paid' : latePaid > 0 ? 'partially_paid' : 'not_paid',
+            collectionPercent: pct,
             cash: 0,
             upi: 0,
             other: 0,

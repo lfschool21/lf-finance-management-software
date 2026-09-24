@@ -36,16 +36,26 @@ export function getStudentFeeSummary(
   incomeEntries: IncomeEntry[],
   excludeEntryId?: string,
 ): StudentFeeSummary {
-  const payments = incomeEntries.filter((entry) =>
-    entry.id !== excludeEntryId && entry.studentEnrollmentId === enrollment.id && entry.category === 'Tuition Fees',
-  );
+  const payments = incomeEntries.filter((entry) => {
+    if (entry.id === excludeEntryId) return false;
+    if (entry.category !== 'Tuition Fees') return false;
+    if (entry.studentEnrollmentId !== enrollment.id) return false;
+    // Exclude late payments belonging to a different academic year than this enrollment
+    if (entry.isLateCollection && entry.originalYearId && entry.originalYearId !== enrollment.academicYearId) {
+      return false;
+    }
+    return true;
+  });
+
   const byMethod = (method: PaymentMethod) => payments
     .filter((entry) => entry.paymentMethod === method)
     .reduce((sum, entry) => sum + entry.amount, 0);
+
   const recordedCollected = payments.reduce((sum, entry) => sum + entry.amount, 0);
   const opening = openingCollected(enrollment);
   const obligation = feeObligation(enrollment);
   const collected = opening + recordedCollected;
+
   const pending = Math.max(0, obligation - collected);
   const status = collected <= EPSILON ? 'not_paid' : pending <= EPSILON ? 'paid' : 'partially_paid';
   const otherRecorded = byMethod('bank_transfer') + byMethod('cheque') + byMethod('other');
@@ -78,14 +88,24 @@ export function getStudentPreviousPending(
   const currentEnrollment = enrollments.find(
     (enrollment) => enrollment.studentId === studentId && enrollment.academicYearId === currentYearId,
   );
+
   const currentCarryPending = currentEnrollment
-    ? Math.min(
-        currentEnrollment.additionalOutstandingAmount || 0,
-        getStudentFeeSummary(currentEnrollment, incomeEntries).pending,
-      )
+    ? (() => {
+        if (!currentEnrollment.additionalOutstandingAmount) return 0;
+        const carryPayments = incomeEntries
+          .filter(
+            (entry) =>
+              entry.category === 'Tuition Fees' &&
+              entry.isLateCollection &&
+              (entry.studentEnrollmentId === currentEnrollment.id ||
+                enrollments.some((enr) => enr.studentId === studentId && enr.id === entry.studentEnrollmentId))
+          )
+          .reduce((sum, entry) => sum + entry.amount, 0);
+        return Math.max(0, currentEnrollment.additionalOutstandingAmount - carryPayments);
+      })()
     : 0;
 
-  return historicalPending + currentCarryPending;
+  return historicalPending > 0 ? Math.max(historicalPending, currentCarryPending) : currentCarryPending;
 }
 
 export interface RosterSummary {
