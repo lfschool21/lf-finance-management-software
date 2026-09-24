@@ -6,6 +6,7 @@ import {
   getStudentFeeSummary,
   getStudentPreviousPending,
   groupRosterByClassWithPrevious,
+  summarizeRoster,
 } from '@/lib/student-fees';
 import type { Student, StudentEnrollment, StudentMedium } from '@/types/students';
 import { Button } from '@/components/ui/button';
@@ -82,14 +83,88 @@ export default function StudentsPage() {
 
   const selectedClass = searchParams.get('class');
 
-  // Medium student counts
-  const gujaratiCount = useMemo(() => roster.filter((r) => r.medium === 'gujarati').length, [roster]);
-  const englishCount = useMemo(() => roster.filter((r) => r.medium === 'english').length, [roster]);
+  // Medium-split rosters
+  const gujaratiRoster = useMemo(() => roster.filter((r) => r.medium === 'gujarati'), [roster]);
+  const englishRoster = useMemo(() => roster.filter((r) => r.medium === 'english'), [roster]);
+  const gujaratiCount = gujaratiRoster.length;
+  const englishCount = englishRoster.length;
+
+  // Medium summaries and collection stats
+  const gujaratiSummary = useMemo(
+    () => summarizeRoster(gujaratiRoster, incomeEntries),
+    [gujaratiRoster, incomeEntries]
+  );
+  const englishSummary = useMemo(
+    () => summarizeRoster(englishRoster, incomeEntries),
+    [englishRoster, incomeEntries]
+  );
+
+  const gujaratiPrevPending = useMemo(() => {
+    return gujaratiRoster.reduce(
+      (sum, e) => sum + getStudentPreviousPending(e.studentId, yearId, enrollments, incomeEntries),
+      0
+    );
+  }, [gujaratiRoster, yearId, enrollments, incomeEntries]);
+
+  const englishPrevPending = useMemo(() => {
+    return englishRoster.reduce(
+      (sum, e) => sum + getStudentPreviousPending(e.studentId, yearId, enrollments, incomeEntries),
+      0
+    );
+  }, [englishRoster, yearId, enrollments, incomeEntries]);
+
+  const gujaratiCurrentPending = useMemo(() => {
+    return gujaratiRoster.reduce(
+      (sum, e) => sum + Math.max(0, e.annualFeeAmount - getStudentFeeSummary(e, incomeEntries).collected),
+      0
+    );
+  }, [gujaratiRoster, incomeEntries]);
+
+  const englishCurrentPending = useMemo(() => {
+    return englishRoster.reduce(
+      (sum, e) => sum + Math.max(0, e.annualFeeAmount - getStudentFeeSummary(e, incomeEntries).collected),
+      0
+    );
+  }, [englishRoster, incomeEntries]);
+
+  const gujaratiStats = useMemo(() => {
+    const target = gujaratiSummary.currentAnnualFee;
+    const collected = gujaratiSummary.collected;
+    const pct = target > 0 ? Math.min(100, Math.round((collected / target) * 100)) : 0;
+    return {
+      studentsCount: gujaratiRoster.length,
+      totalAnnualFee: target,
+      totalObligation: gujaratiSummary.obligation,
+      collected,
+      currentPending: Math.round(gujaratiCurrentPending * 100) / 100,
+      previousPending: Math.round(gujaratiPrevPending * 100) / 100,
+      totalPending: Math.round((gujaratiCurrentPending + gujaratiPrevPending) * 100) / 100,
+      collectionPercent: pct,
+    };
+  }, [gujaratiSummary, gujaratiRoster.length, gujaratiCurrentPending, gujaratiPrevPending]);
+
+  const englishStats = useMemo(() => {
+    const target = englishSummary.currentAnnualFee;
+    const collected = englishSummary.collected;
+    const pct = target > 0 ? Math.min(100, Math.round((collected / target) * 100)) : 0;
+    return {
+      studentsCount: englishRoster.length,
+      totalAnnualFee: target,
+      totalObligation: englishSummary.obligation,
+      collected,
+      currentPending: Math.round(englishCurrentPending * 100) / 100,
+      previousPending: Math.round(englishPrevPending * 100) / 100,
+      totalPending: Math.round((englishCurrentPending + englishPrevPending) * 100) / 100,
+      collectionPercent: pct,
+    };
+  }, [englishSummary, englishRoster.length, englishCurrentPending, englishPrevPending]);
+
+  const activeCollected = activeMedium === 'gujarati' ? gujaratiStats.collected : englishStats.collected;
 
   // Medium-scoped roster
   const mediumScopedRoster = useMemo(() => {
-    return roster.filter((r) => r.medium === activeMedium);
-  }, [roster, activeMedium]);
+    return activeMedium === 'gujarati' ? gujaratiRoster : englishRoster;
+  }, [activeMedium, gujaratiRoster, englishRoster]);
 
   // Fast student lookup map
   const studentMap = useMemo(() => {
@@ -246,13 +321,17 @@ export default function StudentsPage() {
       {/* 4. Two-View Rendering: Class Grid vs Class Student List */}
       {!selectedClass ? (
         <div className="space-y-5">
-          {/* Overview of 4 key metrics for the active medium */}
+          {/* Overview of key metrics for the active medium & fee collections */}
           <StudentOverview
             totalStudents={mediumScopedRoster.length}
             currentYearPending={totalCurrentPending}
             previousYearPending={totalPreviousPending}
             totalPending={totalAllPending}
             activeMedium={activeMedium}
+            activeCollected={activeCollected}
+            onMediumChange={handleMediumChange}
+            gujaratiStats={gujaratiStats}
+            englishStats={englishStats}
           />
 
           {/* Class Cards Grid */}

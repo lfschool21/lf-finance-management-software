@@ -12,6 +12,7 @@ describe('Students Experience Redesign', () => {
   });
 
   beforeEach(() => {
+    window.history.pushState({}, '', '/');
     useFinanceStore.setState({
       academicYears: [
         {
@@ -166,6 +167,33 @@ describe('Students Experience Redesign', () => {
 
     fireEvent.change(searchInput, { target: { value: 'Bhavna' } });
     expect(screen.getAllByText('Bhavna Shah').length).toBeGreaterThan(0);
+  });
+
+  it('renders total fees collected for both Gujarati and English medium in summary section and allows interaction', () => {
+    render(
+      <BrowserRouter>
+        <StudentsPage />
+      </BrowserRouter>
+    );
+
+    // Section title
+    expect(screen.getByText('Medium Fee Collection Breakdown')).toBeInTheDocument();
+    expect(screen.getByText(/Total fees collected for Gujarati and English medium students/i)).toBeInTheDocument();
+    expect(screen.getByText(/Combined Collected:/i)).toBeInTheDocument();
+
+    // Gujarati and English collection summary cards via test IDs
+    const gujaratiCard = screen.getByTestId('gujarati-collection-summary');
+    const englishCard = screen.getByTestId('english-collection-summary');
+    expect(gujaratiCard).toBeInTheDocument();
+    expect(englishCard).toBeInTheDocument();
+    expect(screen.getAllByText('Total Fees Collected').length).toBe(2);
+
+    // Active medium operational card has Fees Collected metric
+    expect(screen.getByText('Fees Collected')).toBeInTheDocument();
+
+    // Click English Medium card to switch active medium
+    fireEvent.click(englishCard);
+    expect(screen.getByText('English Students')).toBeInTheDocument();
   });
 
   it('renders StudentDetailPage with 3 tabs, fee calculation, and payment history', () => {
