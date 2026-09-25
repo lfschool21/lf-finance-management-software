@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { IncomeEntry } from '@/types/finance';
 import type { StudentEnrollment } from '@/types/students';
-import { getStudentFeeSummary, groupRosterByClass, normalizeMedium, summarizeRoster } from './student-fees';
+import {
+  calculateAverageFees,
+  calculateClassAverageFees,
+  getStudentFeeSummary,
+  groupRosterByClass,
+  groupRosterByClassWithPrevious,
+  normalizeMedium,
+  summarizeRoster,
+} from './student-fees';
 
 const enrollment: StudentEnrollment = {
   id: 'e1', studentId: 's1', academicYearId: 'y1', className: 'Class 6', medium: 'english',
@@ -34,5 +42,37 @@ describe('student fee domain', () => {
     expect(summarizeRoster(rows, []).totalStudents).toBe(2);
     expect(summarizeRoster(rows, [])).toMatchObject({ english: 1, gujarati: 1, pendingStudents: 2 });
     expect(groupRosterByClass(rows, [])).toHaveLength(1);
+  });
+  it('calculates average fees per student and by class accurately', () => {
+    const rows: StudentEnrollment[] = [
+      { ...enrollment, id: 'e1', studentId: 's1', annualFeeAmount: 20000, className: 'Class 1', medium: 'gujarati' },
+      { ...enrollment, id: 'e2', studentId: 's2', annualFeeAmount: 30000, className: 'Class 1', medium: 'gujarati' },
+      { ...enrollment, id: 'e3', studentId: 's3', annualFeeAmount: 40000, className: 'Class 2', medium: 'english' },
+      { ...enrollment, id: 'e4', studentId: 's4', annualFeeAmount: 10000, className: 'Class 2', status: 'transferred' },
+    ];
+    // 3 active students: total annual fee = 20k + 30k + 40k = 90k, avg = 30k
+    const avg = calculateAverageFees(rows, []);
+    expect(avg.totalStudents).toBe(3);
+    expect(avg.totalAnnualFee).toBe(90000);
+    expect(avg.avgAnnualFeeCharged).toBe(30000);
+
+    const classAvgs = calculateClassAverageFees(rows, []);
+    expect(classAvgs).toHaveLength(2);
+    expect(classAvgs[0]).toMatchObject({
+      className: 'Class 1',
+      totalStudents: 2,
+      totalAnnualFee: 50000,
+      avgAnnualFeeCharged: 25000,
+    });
+    expect(classAvgs[1]).toMatchObject({
+      className: 'Class 2',
+      totalStudents: 1,
+      totalAnnualFee: 40000,
+      avgAnnualFeeCharged: 40000,
+    });
+
+    const classCards = groupRosterByClassWithPrevious(rows, rows, [], 'y1');
+    expect(classCards[0].avgAnnualFee).toBe(25000);
+    expect(classCards[1].avgAnnualFee).toBe(40000);
   });
 });

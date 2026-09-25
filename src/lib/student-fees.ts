@@ -118,22 +118,135 @@ export interface RosterSummary {
   currentAnnualFee: number;
   collected: number;
   pending: number;
+  avgAnnualFeeCharged?: number;
+  avgCollected?: number;
+  avgPending?: number;
 }
 
 export function summarizeRoster(enrollments: StudentEnrollment[], incomeEntries: IncomeEntry[]): RosterSummary {
   const active = enrollments.filter((enrollment) => enrollment.status === 'active');
   const summaries = active.map((enrollment) => getStudentFeeSummary(enrollment, incomeEntries));
+  const currentAnnualFee = active.reduce((sum, e) => sum + (e.annualFeeAmount || 0), 0);
+  const collected = summaries.reduce((sum, summary) => sum + summary.collected, 0);
+  const pending = summaries.reduce((sum, summary) => sum + summary.pending, 0);
+  const count = active.length;
+
   return {
-    totalStudents: active.length,
+    totalStudents: count,
     english: active.filter((enrollment) => enrollment.medium === 'english').length,
     gujarati: active.filter((enrollment) => enrollment.medium === 'gujarati').length,
     pendingStudents: summaries.filter((summary) => summary.pending > EPSILON).length,
     fullyPaidStudents: summaries.filter((summary) => summary.status === 'paid').length,
     obligation: summaries.reduce((sum, summary) => sum + summary.obligation, 0),
-    currentAnnualFee: active.reduce((sum, e) => sum + (e.annualFeeAmount || 0), 0),
-    collected: summaries.reduce((sum, summary) => sum + summary.collected, 0),
-    pending: summaries.reduce((sum, summary) => sum + summary.pending, 0),
+    currentAnnualFee,
+    collected,
+    pending,
+    avgAnnualFeeCharged: count > 0 ? Math.round(currentAnnualFee / count) : 0,
+    avgCollected: count > 0 ? Math.round(collected / count) : 0,
+    avgPending: count > 0 ? Math.round(pending / count) : 0,
   };
+}
+
+export interface AverageFeeMetrics {
+  totalStudents: number;
+  totalAnnualFee: number;
+  avgAnnualFeeCharged: number; // Avg annual tuition charged by the school per student
+  totalObligation: number;
+  avgObligation: number;
+  totalCollected: number;
+  avgCollected: number;
+  totalPending: number;
+  avgPending: number;
+  collectionRate: number;
+}
+
+export function calculateAverageFees(
+  enrollments: StudentEnrollment[],
+  incomeEntries: IncomeEntry[],
+): AverageFeeMetrics {
+  const active = enrollments.filter((enrollment) => enrollment.status === 'active');
+  const count = active.length;
+  if (count === 0) {
+    return {
+      totalStudents: 0,
+      totalAnnualFee: 0,
+      avgAnnualFeeCharged: 0,
+      totalObligation: 0,
+      avgObligation: 0,
+      totalCollected: 0,
+      avgCollected: 0,
+      totalPending: 0,
+      avgPending: 0,
+      collectionRate: 0,
+    };
+  }
+
+  const summaries = active.map((enrollment) => getStudentFeeSummary(enrollment, incomeEntries));
+  const totalAnnualFee = active.reduce((sum, e) => sum + (e.annualFeeAmount || 0), 0);
+  const totalObligation = summaries.reduce((sum, summary) => sum + summary.obligation, 0);
+  const totalCollected = summaries.reduce((sum, summary) => sum + summary.collected, 0);
+  const totalPending = summaries.reduce((sum, summary) => sum + summary.pending, 0);
+
+  return {
+    totalStudents: count,
+    totalAnnualFee,
+    avgAnnualFeeCharged: Math.round(totalAnnualFee / count),
+    totalObligation,
+    avgObligation: Math.round(totalObligation / count),
+    totalCollected,
+    avgCollected: Math.round(totalCollected / count),
+    totalPending,
+    avgPending: Math.round(totalPending / count),
+    collectionRate: totalAnnualFee > 0 ? Math.min(100, Math.round((totalCollected / totalAnnualFee) * 100)) : 0,
+  };
+}
+
+export interface ClassAverageFeeDetail {
+  className: string;
+  medium: StudentMedium;
+  totalStudents: number;
+  totalAnnualFee: number;
+  avgAnnualFeeCharged: number;
+  totalCollected: number;
+  avgCollected: number;
+  totalPending: number;
+  avgPending: number;
+  collectionRate: number;
+}
+
+export function calculateClassAverageFees(
+  enrollments: StudentEnrollment[],
+  incomeEntries: IncomeEntry[],
+): ClassAverageFeeDetail[] {
+  const active = enrollments.filter((enrollment) => enrollment.status === 'active');
+  const groups = new Map<string, StudentEnrollment[]>();
+
+  for (const enrollment of active) {
+    const key = `${enrollment.className}__${enrollment.medium}`;
+    const values = groups.get(key) || [];
+    values.push(enrollment);
+    groups.set(key, values);
+  }
+
+  const results: ClassAverageFeeDetail[] = [];
+  for (const [, classEnrollments] of groups.entries()) {
+    const first = classEnrollments[0];
+    const metrics = calculateAverageFees(classEnrollments, incomeEntries);
+    results.push({
+      className: first.className,
+      medium: first.medium,
+      totalStudents: metrics.totalStudents,
+      totalAnnualFee: metrics.totalAnnualFee,
+      avgAnnualFeeCharged: metrics.avgAnnualFeeCharged,
+      totalCollected: metrics.totalCollected,
+      avgCollected: metrics.avgCollected,
+      totalPending: metrics.totalPending,
+      avgPending: metrics.avgPending,
+      collectionRate: metrics.collectionRate,
+    });
+  }
+
+  return results.sort((a, b) => compareClassNames(a.className, b.className));
 }
 
 export interface ClassRosterSummary extends RosterSummary { className: string }
@@ -157,6 +270,8 @@ export interface ClassCardSummary {
   currentYearPending: number;
   previousYearPending: number;
   totalPending: number;
+  totalAnnualFee?: number;
+  avgAnnualFee?: number;
 }
 
 export function groupRosterByClassWithPrevious(
@@ -177,6 +292,8 @@ export function groupRosterByClassWithPrevious(
         currentYearPending: 0,
         previousYearPending: 0,
         totalPending: 0,
+        totalAnnualFee: 0,
+        avgAnnualFee: 0,
       };
       groups.set(enrollment.className, summary);
     }
@@ -196,6 +313,8 @@ export function groupRosterByClassWithPrevious(
     summary.currentYearPending = Math.round((summary.currentYearPending + currentPending) * 100) / 100;
     summary.previousYearPending = Math.round((summary.previousYearPending + prevPending) * 100) / 100;
     summary.totalPending = Math.round((summary.totalPending + currentPending + prevPending) * 100) / 100;
+    summary.totalAnnualFee = Math.round(((summary.totalAnnualFee || 0) + (enrollment.annualFeeAmount || 0)) * 100) / 100;
+    summary.avgAnnualFee = summary.totalStudents > 0 ? Math.round((summary.totalAnnualFee || 0) / summary.totalStudents) : 0;
   }
 
   return Array.from(groups.values()).sort((a, b) => compareClassNames(a.className, b.className));
@@ -209,3 +328,4 @@ export function findStudentForEnrollment(
   const enrollment = enrollments.find((item) => item.id === enrollmentId);
   return students.find((student) => student.id === enrollment?.studentId);
 }
+

@@ -1,7 +1,8 @@
 import React from 'react';
-import { Users, AlertCircle, Clock, IndianRupee, CheckCircle2, ArrowRight, Wallet } from 'lucide-react';
+import { Users, AlertCircle, Clock, IndianRupee, CheckCircle2, ArrowRight, Wallet, Calculator } from 'lucide-react';
 import { formatINR } from '@/utils/currency';
 import { useTranslation } from '@/lib/i18n';
+import { Button } from '@/components/ui/button';
 import type { ClassRosterSummary, RosterSummary } from '@/lib/student-fees';
 import type { AcademicYear } from '@/types/finance';
 import type { StudentMedium } from '@/types/students';
@@ -15,6 +16,8 @@ export interface MediumCollectionStats {
   previousPending: number;
   totalPending: number;
   collectionPercent: number;
+  avgAnnualFeeCharged?: number;
+  avgCollected?: number;
 }
 
 interface StudentOverviewProps {
@@ -27,6 +30,9 @@ interface StudentOverviewProps {
   onMediumChange?: (medium: StudentMedium) => void;
   gujaratiStats?: MediumCollectionStats;
   englishStats?: MediumCollectionStats;
+  onOpenCalculator?: () => void;
+  avgAnnualFeeCharged?: number;
+  avgCollected?: number;
   // Optional legacy props for backwards-compatibility
   summary?: RosterSummary;
   classes?: ClassRosterSummary[];
@@ -44,6 +50,9 @@ export function StudentOverview({
   onMediumChange,
   gujaratiStats,
   englishStats,
+  onOpenCalculator,
+  avgAnnualFeeCharged,
+  avgCollected,
   summary,
   unassignedTuition = 0,
 }: StudentOverviewProps) {
@@ -204,6 +213,13 @@ export function StudentOverview({
                 <span>{formatINR(gujStats.collected)} of {formatINR(gujStats.totalAnnualFee || gujStats.collected)}</span>
               </div>
             </div>
+
+            {gujStats.studentsCount > 0 && gujStats.totalAnnualFee > 0 && (
+              <div className="mt-2.5 pt-2 border-t border-amber-500/20 flex items-center justify-between text-[11px] font-mono-nums text-muted-foreground">
+                <span>Avg Fee Charged: <strong className="text-foreground">{formatINR(Math.round(gujStats.totalAnnualFee / gujStats.studentsCount))}</strong> / stu</span>
+                <span>Avg Recvd: <strong className="text-income">{formatINR(Math.round(gujStats.collected / gujStats.studentsCount))}</strong></span>
+              </div>
+            )}
           </div>
 
           {/* English Medium Fee Collection Card */}
@@ -283,11 +299,18 @@ export function StudentOverview({
                 <span>{formatINR(engStats.collected)} of {formatINR(engStats.totalAnnualFee || engStats.collected)}</span>
               </div>
             </div>
+
+            {engStats.studentsCount > 0 && engStats.totalAnnualFee > 0 && (
+              <div className="mt-2.5 pt-2 border-t border-sky-500/20 flex items-center justify-between text-[11px] font-mono-nums text-muted-foreground">
+                <span>Avg Fee Charged: <strong className="text-foreground">{formatINR(Math.round(engStats.totalAnnualFee / engStats.studentsCount))}</strong> / stu</span>
+                <span>Avg Recvd: <strong className="text-income">{formatINR(Math.round(engStats.collected / engStats.studentsCount))}</strong></span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* 2. Active Medium Operational KPIs (5 Detailed Metrics) */}
+      {/* 2. Active Medium Operational KPIs (6 Detailed Metrics) */}
       <div className="space-y-3 pt-3 border-t border-border/70">
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
@@ -300,12 +323,25 @@ export function StudentOverview({
               {mediumLabel}
             </span>
           </div>
-          <span className="text-xs text-muted-foreground hidden sm:inline">
-            Active workspace operational breakdown
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground hidden sm:inline">
+              Active workspace operational breakdown
+            </span>
+            {onOpenCalculator && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenCalculator}
+                className="h-7 text-xs gap-1.5 font-semibold text-primary border-primary/30 hover:bg-primary/10 shadow-xs"
+              >
+                <Calculator className="h-3.5 w-3.5" />
+                <span>Calculate Avg Fees</span>
+              </Button>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-3.5 font-mono-nums">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-3.5 font-mono-nums">
           {/* 1. Students Count */}
           <div className="rounded-lg bg-muted/40 border border-border/60 p-3.5 flex flex-col justify-between hover:shadow-sm transition-shadow">
             <div className="flex items-center justify-between text-muted-foreground">
@@ -322,7 +358,7 @@ export function StudentOverview({
             </div>
           </div>
 
-          {/* 2. Fees Collected (NEW!) */}
+          {/* 2. Fees Collected */}
           <div className="rounded-lg bg-income/10 border border-income/25 p-3.5 flex flex-col justify-between text-income hover:shadow-sm transition-shadow">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-medium uppercase tracking-wider opacity-90">
@@ -342,7 +378,29 @@ export function StudentOverview({
             </div>
           </div>
 
-          {/* 3. This Year Pending */}
+          {/* 3. Avg Fee Charged by School */}
+          <div className="rounded-lg bg-primary/[0.06] border border-primary/20 p-3.5 flex flex-col justify-between hover:shadow-sm transition-shadow">
+            <div className="flex items-center justify-between text-primary">
+              <span className="text-[11px] font-medium uppercase tracking-wider">
+                Avg Fee Charged
+              </span>
+              <Calculator className="h-4 w-4 opacity-80" />
+            </div>
+            <div className="mt-2.5 flex items-baseline gap-1">
+              <span className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+                {formatINR(
+                  count > 0 && activeTarget > 0
+                    ? Math.round(activeTarget / count)
+                    : isGujarati
+                    ? (gujStats.avgAnnualFeeCharged ?? avgAnnualFeeCharged ?? 0)
+                    : (engStats.avgAnnualFeeCharged ?? avgAnnualFeeCharged ?? 0)
+                )}
+              </span>
+              <span className="text-[11px] font-sans text-muted-foreground">/ stu</span>
+            </div>
+          </div>
+
+          {/* 4. This Year Pending */}
           <div className="rounded-lg bg-amber-500/5 border border-amber-500/20 p-3.5 flex flex-col justify-between hover:shadow-sm transition-shadow">
             <div className="flex items-center justify-between text-amber-800 dark:text-amber-300">
               <span className="text-[11px] font-medium uppercase tracking-wider">
@@ -357,7 +415,7 @@ export function StudentOverview({
             </div>
           </div>
 
-          {/* 4. Previous Year Pending */}
+          {/* 5. Previous Year Pending */}
           <div className="rounded-lg bg-orange-500/5 border border-orange-500/20 p-3.5 flex flex-col justify-between hover:shadow-sm transition-shadow">
             <div className="flex items-center justify-between text-orange-800 dark:text-orange-300">
               <span className="text-[11px] font-medium uppercase tracking-wider">
@@ -377,7 +435,7 @@ export function StudentOverview({
             </div>
           </div>
 
-          {/* 5. Total Pending */}
+          {/* 6. Total Pending */}
           <div className="col-span-2 sm:col-span-1 rounded-lg bg-rose-500/5 border border-rose-500/25 p-3.5 flex flex-col justify-between hover:shadow-sm transition-shadow">
             <div className="flex items-center justify-between text-rose-800 dark:text-rose-300">
               <span className="text-[11px] font-medium uppercase tracking-wider">

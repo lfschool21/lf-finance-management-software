@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, ArrowRight, IndianRupee, Clock, CheckCircle2 } from 'lucide-react';
+import { Users, ArrowRight, IndianRupee, Clock, CheckCircle2, Calculator } from 'lucide-react';
 import { formatINR } from '@/utils/currency';
 import type { ClassCardSummary } from '@/lib/student-fees';
 import type { StudentMedium } from '@/types/students';
@@ -64,6 +64,19 @@ export function ClassCard({ summary, medium, onSelectClass }: ClassCardProps) {
 
         {/* Financial Metrics Grid */}
         <div className="mt-4 space-y-2.5 font-mono-nums text-xs">
+          {/* Avg Fee Charged by School */}
+          {typeof summary.avgAnnualFee === 'number' && summary.avgAnnualFee > 0 && (
+            <div className="flex items-center justify-between rounded-lg bg-primary/[0.04] border border-primary/15 px-3 py-2">
+              <span className="text-muted-foreground flex items-center gap-1.5 font-medium">
+                <Calculator className="h-3.5 w-3.5 text-primary opacity-80" />
+                Avg Fee Charged
+              </span>
+              <span className="font-bold text-foreground">
+                {formatINR(summary.avgAnnualFee)} <span className="text-[10px] font-normal text-muted-foreground font-sans">/ stu</span>
+              </span>
+            </div>
+          )}
+
           {/* 1. This Year Pending */}
           <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
             <span className="text-muted-foreground flex items-center gap-1.5">

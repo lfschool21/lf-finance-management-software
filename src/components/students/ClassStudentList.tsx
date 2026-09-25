@@ -12,6 +12,7 @@ import {
   ArrowUp,
   ArrowDown,
   X,
+  Calculator,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,22 +70,33 @@ export function ClassStudentList({
   const stats = useMemo(() => {
     let currentPending = 0;
     let previousPending = 0;
+    let totalAnnualFee = 0;
+    let totalCollected = 0;
 
     for (const r of rows) {
       const studentCurrentPending = Math.max(0, r.enrollment.annualFeeAmount - r.fees.collected);
       currentPending += studentCurrentPending;
       previousPending += r.previous;
+      totalAnnualFee += (r.enrollment.annualFeeAmount || 0);
+      totalCollected += r.fees.collected;
     }
 
     currentPending = Math.round(currentPending * 100) / 100;
     previousPending = Math.round(previousPending * 100) / 100;
     const totalPending = Math.round((currentPending + previousPending) * 100) / 100;
+    const count = rows.length;
+    const avgFeeCharged = count > 0 ? Math.round(totalAnnualFee / count) : 0;
+    const avgCollected = count > 0 ? Math.round(totalCollected / count) : 0;
 
     return {
-      count: rows.length,
+      count,
       currentPending,
       previousPending,
       totalPending,
+      totalAnnualFee,
+      totalCollected,
+      avgFeeCharged,
+      avgCollected,
     };
   }, [rows]);
 
@@ -197,8 +209,8 @@ export function ClassStudentList({
         </div>
       </div>
 
-      {/* 2. Class Summary Cards (4 Metrics) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono-nums">
+      {/* 2. Class Summary Cards (5 Metrics) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 font-mono-nums">
         <div className="rounded-xl border bg-card p-3.5 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -210,6 +222,20 @@ export function ClassStudentList({
           </div>
           <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
             <Users className="h-4 w-4" />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-primary">
+              Avg Fee Charged
+            </p>
+            <p className="text-2xl font-bold tracking-tight text-foreground mt-0.5">
+              {formatINR(stats.avgFeeCharged)}
+            </p>
+          </div>
+          <div className="h-9 w-9 rounded-lg bg-primary/15 flex items-center justify-center text-primary">
+            <Calculator className="h-4 w-4" />
           </div>
         </div>
 

@@ -8,6 +8,8 @@ interface MediumStats {
   totalStudents: number;
   pendingStudents: number;
   pendingAmount: number;
+  avgAnnualFeeCharged?: number;
+  avgCollected?: number;
 }
 
 interface MediumStudentSnapshotProps {
@@ -84,6 +86,13 @@ export function MediumStudentSnapshot({
                 </p>
               </div>
             </div>
+
+            {typeof gujarati.avgAnnualFeeCharged === 'number' && gujarati.avgAnnualFeeCharged > 0 && (
+              <div className="mt-2.5 flex items-center justify-between text-xs px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 font-mono-nums">
+                <span className="text-muted-foreground text-[11px]">Avg Fee Charged:</span>
+                <span className="font-bold text-foreground">{formatINR(gujarati.avgAnnualFeeCharged)} / stu</span>
+              </div>
+            )}
           </div>
 
           <div className="mt-4 pt-3 border-t border-border/70 flex items-center justify-between">
@@ -141,6 +150,13 @@ export function MediumStudentSnapshot({
                 </p>
               </div>
             </div>
+
+            {typeof english.avgAnnualFeeCharged === 'number' && english.avgAnnualFeeCharged > 0 && (
+              <div className="mt-2.5 flex items-center justify-between text-xs px-2.5 py-1.5 rounded-lg bg-sky-500/10 border border-sky-500/20 font-mono-nums">
+                <span className="text-muted-foreground text-[11px]">Avg Fee Charged:</span>
+                <span className="font-bold text-foreground">{formatINR(english.avgAnnualFeeCharged)} / stu</span>
+              </div>
+            )}
           </div>
 
           <div className="mt-4 pt-3 border-t border-border/70 flex items-center justify-between">

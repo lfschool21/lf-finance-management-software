@@ -25,6 +25,7 @@ import { StudentImportWizard } from '@/components/StudentImportWizard';
 import { AddIncomeModal } from '@/components/AddIncomeModal';
 import { RemoveAllStudentsModal } from '@/components/students/RemoveAllStudentsModal';
 import { downloadStudentImportTemplate } from '@/lib/student-import';
+import { AverageFeeCalculatorModal } from '@/components/AverageFeeCalculatorModal';
 
 export default function StudentsPage() {
   const navigate = useNavigate();
@@ -57,6 +58,7 @@ export default function StudentsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showRemoveAllModal, setShowRemoveAllModal] = useState(false);
+  const [showAvgFeeCalc, setShowAvgFeeCalc] = useState(false);
   const [editingData, setEditingData] = useState<{
     student: Student;
     enrollment: StudentEnrollment;
@@ -131,8 +133,9 @@ export default function StudentsPage() {
     const target = gujaratiSummary.currentAnnualFee;
     const collected = gujaratiSummary.collected;
     const pct = target > 0 ? Math.min(100, Math.round((collected / target) * 100)) : 0;
+    const count = gujaratiRoster.length;
     return {
-      studentsCount: gujaratiRoster.length,
+      studentsCount: count,
       totalAnnualFee: target,
       totalObligation: gujaratiSummary.obligation,
       collected,
@@ -140,6 +143,8 @@ export default function StudentsPage() {
       previousPending: Math.round(gujaratiPrevPending * 100) / 100,
       totalPending: Math.round((gujaratiCurrentPending + gujaratiPrevPending) * 100) / 100,
       collectionPercent: pct,
+      avgAnnualFeeCharged: count > 0 ? Math.round(target / count) : 0,
+      avgCollected: count > 0 ? Math.round(collected / count) : 0,
     };
   }, [gujaratiSummary, gujaratiRoster.length, gujaratiCurrentPending, gujaratiPrevPending]);
 
@@ -147,8 +152,9 @@ export default function StudentsPage() {
     const target = englishSummary.currentAnnualFee;
     const collected = englishSummary.collected;
     const pct = target > 0 ? Math.min(100, Math.round((collected / target) * 100)) : 0;
+    const count = englishRoster.length;
     return {
-      studentsCount: englishRoster.length,
+      studentsCount: count,
       totalAnnualFee: target,
       totalObligation: englishSummary.obligation,
       collected,
@@ -156,6 +162,8 @@ export default function StudentsPage() {
       previousPending: Math.round(englishPrevPending * 100) / 100,
       totalPending: Math.round((englishCurrentPending + englishPrevPending) * 100) / 100,
       collectionPercent: pct,
+      avgAnnualFeeCharged: count > 0 ? Math.round(target / count) : 0,
+      avgCollected: count > 0 ? Math.round(collected / count) : 0,
     };
   }, [englishSummary, englishRoster.length, englishCurrentPending, englishPrevPending]);
 
@@ -308,6 +316,7 @@ export default function StudentsPage() {
         onImportStudents={() => setShowImportModal(true)}
         onDownloadTemplate={downloadStudentImportTemplate}
         onRemoveAllStudents={() => setShowRemoveAllModal(true)}
+        onOpenCalculator={() => setShowAvgFeeCalc(true)}
         totalStudentsCount={students.length}
         activeMedium={activeMedium}
       />
@@ -344,6 +353,7 @@ export default function StudentsPage() {
             onMediumChange={handleMediumChange}
             gujaratiStats={gujaratiStats}
             englishStats={englishStats}
+            onOpenCalculator={() => setShowAvgFeeCalc(true)}
             unassignedTuition={unassignedCurrentTuition}
           />
 
@@ -455,6 +465,15 @@ export default function StudentsPage() {
           previousClass={previousPaymentContext.className}
         />
       )}
+
+      {/* Average Fee Calculator & Simulator Modal */}
+      <AverageFeeCalculatorModal
+        open={showAvgFeeCalc}
+        onClose={() => setShowAvgFeeCalc(false)}
+        academicYearId={yearId}
+        academicYearLabel={year?.label}
+        initialMedium={activeMedium}
+      />
     </div>
   );
 }

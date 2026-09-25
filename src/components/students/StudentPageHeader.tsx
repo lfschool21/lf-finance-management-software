@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Download, FileSpreadsheet, ChevronDown, Trash2 } from 'lucide-react';
+import { Plus, Download, FileSpreadsheet, ChevronDown, Trash2, Calculator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -27,6 +27,7 @@ interface StudentPageHeaderProps {
   onImportStudents: () => void;
   onDownloadTemplate: () => void;
   onRemoveAllStudents?: () => void;
+  onOpenCalculator?: () => void;
   totalStudentsCount?: number;
   activeMedium?: 'all' | StudentMedium;
 }
@@ -39,6 +40,7 @@ export function StudentPageHeader({
   onImportStudents,
   onDownloadTemplate,
   onRemoveAllStudents,
+  onOpenCalculator,
   totalStudentsCount = 0,
   activeMedium,
 }: StudentPageHeaderProps) {
@@ -119,6 +121,20 @@ export function StudentPageHeader({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Calculate Avg Fees Action */}
+        {onOpenCalculator && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onOpenCalculator}
+            className="h-9 gap-1.5 text-xs font-semibold text-primary border-primary/30 hover:bg-primary/10 shadow-xs"
+            title="Calculate average fees per student"
+          >
+            <Calculator className="h-3.5 w-3.5" />
+            <span>{t('openFeeCalculator')}</span>
+          </Button>
+        )}
 
         {/* Primary Action */}
         <Button onClick={onAddStudent} size="sm" className="h-9 gap-1.5 text-xs font-semibold shadow-sm">

@@ -8,13 +8,19 @@ import {
   getRecoverableSummary,
   isPreviousAcademicYear,
 } from '@/lib/finance-domain';
-import { getStudentFeeSummary, getStudentPreviousPending, summarizeRoster } from '@/lib/student-fees';
+import {
+  calculateAverageFees,
+  getStudentFeeSummary,
+  getStudentPreviousPending,
+  summarizeRoster,
+} from '@/lib/student-fees';
 
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DashboardSummary } from '@/components/dashboard/DashboardSummary';
 import { DashboardAttention } from '@/components/dashboard/DashboardAttention';
 import { FeeCollectionOverview } from '@/components/dashboard/FeeCollectionOverview';
 import { MediumStudentSnapshot } from '@/components/dashboard/MediumStudentSnapshot';
+import { AverageFeeDashboardCard } from '@/components/dashboard/AverageFeeDashboardCard';
 import { FinancialPosition } from '@/components/dashboard/FinancialPosition';
 import { UnrealizedExpenseSection } from '@/components/dashboard/UnrealizedExpenseSection';
 import { CashFlowChart } from '@/components/dashboard/CashFlowChart';
@@ -25,6 +31,7 @@ import { AddIncomeModal } from '@/components/AddIncomeModal';
 import { AddExpenseModal } from '@/components/AddExpenseModal';
 import { TransferModal } from '@/components/TransferModal';
 import { RecurringReviewModal } from '@/components/RecurringReviewModal';
+import { AverageFeeCalculatorModal } from '@/components/AverageFeeCalculatorModal';
 
 export default function Dashboard() {
   const {
@@ -50,6 +57,7 @@ export default function Dashboard() {
   const [showExpense, setShowExpense] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [showRecurring, setShowRecurring] = useState(false);
+  const [showAvgFeeCalc, setShowAvgFeeCalc] = useState(false);
 
   const currentYear = useMemo(
     () => academicYears.find((year) => year.id === currentYearId),
@@ -156,6 +164,10 @@ export default function Dashboard() {
     const gujaratiSummary = summarizeRoster(gujaratiEnrollments, incomeEntries);
     const englishSummary = summarizeRoster(englishEnrollments, incomeEntries);
 
+    const overallAvgMetrics = calculateAverageFees(activeCurrentEnrollments, incomeEntries);
+    const gujaratiAvgMetrics = calculateAverageFees(gujaratiEnrollments, incomeEntries);
+    const englishAvgMetrics = calculateAverageFees(englishEnrollments, incomeEntries);
+
     // Unassigned tuition: current tuition income without a student enrollment link
     const linkedCurrentTuition = currentYearIncome
       .filter((entry) => !entry.isLateCollection && entry.studentEnrollmentId)
@@ -197,12 +209,19 @@ export default function Dashboard() {
         totalStudents: gujaratiEnrollments.length,
         pendingStudents: gujaratiSummary.pendingStudents,
         pendingAmount: gujaratiSummary.pending,
+        avgAnnualFeeCharged: gujaratiAvgMetrics.avgAnnualFeeCharged,
+        avgCollected: gujaratiAvgMetrics.avgCollected,
       },
       english: {
         totalStudents: englishEnrollments.length,
         pendingStudents: englishSummary.pendingStudents,
         pendingAmount: englishSummary.pending,
+        avgAnnualFeeCharged: englishAvgMetrics.avgAnnualFeeCharged,
+        avgCollected: englishAvgMetrics.avgCollected,
       },
+      overallAvgMetrics,
+      gujaratiAvgMetrics,
+      englishAvgMetrics,
       unassignedCurrentTuition,
       totalFeesCollected,
       unrealizedExpenses,
@@ -402,7 +421,17 @@ export default function Dashboard() {
         onViewAllStudents={() => navigate('/students')}
       />
 
-      {/* 6. Financial Position: Cash accounting breakdown and Projected Year-End Profit */}
+      {/* 6. Average Fees Per Student: Pricing, Realization & Simulator */}
+      <AverageFeeDashboardCard
+        overall={derivedData.overallAvgMetrics}
+        gujarati={derivedData.gujaratiAvgMetrics}
+        english={derivedData.englishAvgMetrics}
+        academicYearLabel={currentYear?.label}
+        onOpenCalculator={() => setShowAvgFeeCalc(true)}
+        onNavigateStudents={() => navigate('/students')}
+      />
+
+      {/* 7. Financial Position: Cash accounting breakdown and Projected Year-End Profit */}
       <FinancialPosition
         totalIncome={derivedData.breakdown.totalIncome}
         schoolExpenses={derivedData.schoolExpenses}
@@ -410,7 +439,7 @@ export default function Dashboard() {
         projectedProfit={derivedData.projected}
       />
 
-      {/* 7. Unrealized Expenses Section: Gap between fee collections and available balance */}
+      {/* 8. Unrealized Expenses Section: Gap between fee collections and available balance */}
       <UnrealizedExpenseSection
         totalFeesCollected={derivedData.totalFeesCollected}
         availableBalance={derivedData.totalBalance}
@@ -419,7 +448,7 @@ export default function Dashboard() {
         onAddExpense={() => setShowExpense(true)}
       />
 
-      {/* 8. Trends & Expense Analytics */}
+      {/* 9. Trends & Expense Analytics */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.7fr)]">
         <CashFlowChart data={monthlyData} />
         <ExpenseCategorySummary
@@ -428,7 +457,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* 8. Recent Activity Across Accounts */}
+      {/* 10. Recent Activity Across Accounts */}
       <RecentActivity transactions={recentTransactions} />
 
       {/* Operation Modals */}
@@ -436,6 +465,12 @@ export default function Dashboard() {
       <AddExpenseModal isOpen={showExpense} onClose={() => setShowExpense(false)} />
       <TransferModal isOpen={showTransfer} onClose={() => setShowTransfer(false)} />
       <RecurringReviewModal isOpen={showRecurring} onClose={() => setShowRecurring(false)} />
+      <AverageFeeCalculatorModal
+        open={showAvgFeeCalc}
+        onClose={() => setShowAvgFeeCalc(false)}
+        academicYearId={currentYearId}
+        academicYearLabel={currentYear?.label}
+      />
     </div>
   );
 }
