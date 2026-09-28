@@ -64,6 +64,45 @@ export default function IncomePage() {
     );
   }, [activeCurrentEnrollments, currentYearId, enrollments, incomeEntries]);
 
+  // All other (investment) entries across all years
+  const allOtherEntries = useMemo(
+    () => incomeEntries.filter((i) => i.category === OTHER_CATEGORY),
+    [incomeEntries]
+  );
+
+  const currentYearOtherEntries = useMemo(
+    () => allOtherEntries.filter((i) => i.academicYearId === currentYearId),
+    [allOtherEntries, currentYearId]
+  );
+
+  const previousYearsOtherEntries = useMemo(
+    () => allOtherEntries.filter((i) => i.academicYearId !== currentYearId),
+    [allOtherEntries, currentYearId]
+  );
+
+  const totalOtherAmount = useMemo(
+    () => allOtherEntries.reduce((s, i) => s + i.amount, 0),
+    [allOtherEntries]
+  );
+
+  const currentYearOtherAmount = useMemo(
+    () => currentYearOtherEntries.reduce((s, i) => s + i.amount, 0),
+    [currentYearOtherEntries]
+  );
+
+  const previousYearsOtherAmount = useMemo(
+    () => previousYearsOtherEntries.reduce((s, i) => s + i.amount, 0),
+    [previousYearsOtherEntries]
+  );
+
+  const [investmentFilter, setInvestmentFilter] = useState<'all' | 'current' | 'previous'>('all');
+
+  const displayedOtherEntries = useMemo(() => {
+    if (investmentFilter === 'current') return currentYearOtherEntries;
+    if (investmentFilter === 'previous') return previousYearsOtherEntries;
+    return allOtherEntries;
+  }, [investmentFilter, currentYearOtherEntries, previousYearsOtherEntries, allOtherEntries]);
+
   const stats = useMemo(() => {
     const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
     const tuitionTotal = yearIncome
@@ -78,11 +117,16 @@ export default function IncomePage() {
       { cat: 'Current-Year Tuition Fees', amount: incomeBreakdown.currentTuition },
       { cat: 'Previous-Year Fees Received', amount: incomeBreakdown.oldFees },
       { cat: 'Lunch Fees', amount: incomeBreakdown.lunch },
-      { cat: 'Investment / Extra Income', amount: incomeBreakdown.other },
+      ...(previousYearsOtherAmount > 0
+        ? [
+            { cat: 'Investment / Extra Income (Current AY)', amount: incomeBreakdown.other },
+            { cat: 'Previous-Year Investments', amount: previousYearsOtherAmount },
+          ]
+        : [{ cat: 'Investment / Extra Income', amount: incomeBreakdown.other }]),
     ].filter((item) => item.amount > 0);
 
     return { tuitionTotal, totalIncome, target, categoryBreakdown, incomeBreakdown };
-  }, [incomeEntries, currentYearId, effectiveTarget]);
+  }, [incomeEntries, currentYearId, effectiveTarget, previousYearsOtherAmount]);
 
   const pendingYears = useMemo(() => {
     return academicYears
@@ -113,13 +157,13 @@ export default function IncomePage() {
   // Fixed tabs — no dynamic category discovery needed
   const filteredEntries = useMemo(() => {
     const yearIncome = incomeEntries.filter((i) => i.academicYearId === currentYearId);
-    if (tab === 'all') return yearIncome;
+    if (tab === 'all') return [...yearIncome, ...previousYearsOtherEntries];
     if (tab === 'tuition') return yearIncome.filter((i) => i.category === TUITION_CATEGORY && !i.isLateCollection);
     if (tab === 'old') return yearIncome.filter((i) => i.category === TUITION_CATEGORY && i.isLateCollection);
     if (tab === 'lunch')   return yearIncome.filter((i) => i.category === LUNCH_CATEGORY);
-    if (tab === 'other')   return yearIncome.filter((i) => i.category === OTHER_CATEGORY);
+    if (tab === 'other')   return displayedOtherEntries;
     return [];
-  }, [incomeEntries, currentYearId, tab]);
+  }, [incomeEntries, currentYearId, tab, previousYearsOtherEntries, displayedOtherEntries]);
 
   function openAdd() {
     setEditEntry(undefined);
@@ -268,12 +312,12 @@ export default function IncomePage() {
       <Tabs value={tab} onValueChange={setTab}>
         <div className="overflow-x-auto">
           <TabsList className="w-max min-w-full sm:w-auto">
-            <TabsTrigger value="all">{t('allIncomeTab')}</TabsTrigger>
-            <TabsTrigger value="tuition">{t('currentTuitionTab')}</TabsTrigger>
-            <TabsTrigger value="old">{t('prevFeesReceivedTab')}</TabsTrigger>
-            <TabsTrigger value="lunch">{t('lunchFeesTab')}</TabsTrigger>
-            <TabsTrigger value="other">{t('investmentExtraTab')}</TabsTrigger>
-            <TabsTrigger value="pending">
+            <TabsTrigger value="all" onClick={() => setTab('all')}>{t('allIncomeTab')}</TabsTrigger>
+            <TabsTrigger value="tuition" onClick={() => setTab('tuition')}>{t('currentTuitionTab')}</TabsTrigger>
+            <TabsTrigger value="old" onClick={() => setTab('old')}>{t('prevFeesReceivedTab')}</TabsTrigger>
+            <TabsTrigger value="lunch" onClick={() => setTab('lunch')}>{t('lunchFeesTab')}</TabsTrigger>
+            <TabsTrigger value="other" onClick={() => setTab('other')}>{t('investmentExtraTab')}</TabsTrigger>
+            <TabsTrigger value="pending" onClick={() => setTab('pending')}>
               {t('prevFeesPendingTab')}
               {pendingYears.length > 0 && (
                 <span className="ml-1.5 rounded-full bg-warning px-1.5 py-0.5 text-[10px] font-bold text-warning-foreground">
@@ -321,9 +365,72 @@ export default function IncomePage() {
           />
         </TabsContent>
 
-        <TabsContent value="other" className="mt-4">
+        <TabsContent value="other" className="mt-4 space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border bg-card p-3">
+              <p className="text-xs text-muted-foreground">{t('totalInvestments')}</p>
+              <p className="money-fit mt-1 font-mono text-lg font-bold text-income">
+                {formatINR(totalOtherAmount)}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {allOtherEntries.length} {allOtherEntries.length === 1 ? 'entry' : 'entries'} total
+              </p>
+            </div>
+            <div className="rounded-lg border bg-card p-3">
+              <p className="text-xs text-muted-foreground">{t('currentYearInvestments')}</p>
+              <p className="money-fit mt-1 font-mono text-lg font-bold text-primary">
+                {formatINR(currentYearOtherAmount)}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                AY {currentYear?.label || 'Current'} ({currentYearOtherEntries.length})
+              </p>
+            </div>
+            <div className="rounded-lg border bg-card p-3">
+              <p className="text-xs text-muted-foreground">{t('prevYearInvestments')}</p>
+              <p className="money-fit mt-1 font-mono text-lg font-bold text-income">
+                {formatINR(previousYearsOtherAmount)}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {previousYearsOtherEntries.length} {previousYearsOtherEntries.length === 1 ? 'entry' : 'entries'} from prior AYs
+              </p>
+            </div>
+          </div>
+
+          {previousYearsOtherEntries.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground mr-1">Filter:</span>
+              <Button
+                type="button"
+                variant={investmentFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setInvestmentFilter('all')}
+              >
+                {t('allInvestments')} ({allOtherEntries.length})
+              </Button>
+              <Button
+                type="button"
+                variant={investmentFilter === 'current' ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setInvestmentFilter('current')}
+              >
+                {t('currentYearInvestments')} ({currentYearOtherEntries.length})
+              </Button>
+              <Button
+                type="button"
+                variant={investmentFilter === 'previous' ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setInvestmentFilter('previous')}
+              >
+                {t('prevYearInvestments')} ({previousYearsOtherEntries.length})
+              </Button>
+            </div>
+          )}
+
           <TransactionList
-            entries={incomeEntries.filter((i) => i.academicYearId === currentYearId && i.category === OTHER_CATEGORY)}
+            entries={displayedOtherEntries}
             onEdit={openEdit}
           />
         </TabsContent>
@@ -527,7 +634,7 @@ function TransactionList({
 }) {
   const { t } = useTranslation();
   const { students, enrollments } = useStudentStore();
-  const { accounts, academicYears } = useFinanceStore();
+  const { accounts, academicYears, currentYearId } = useFinanceStore();
   if (entries.length === 0) return <EmptyState message={t('noEntriesYet')} />;
 
   const sorted = [...entries].sort((a, b) => b.date.getTime() - a.date.getTime());
@@ -538,6 +645,8 @@ function TransactionList({
         const student = students.find((item) => item.id === enrollment?.studentId);
         const account = accounts.find((item) => item.id === entry.accountId);
         const originalYear = academicYears.find((item) => item.id === entry.originalYearId);
+        const entryYear = academicYears.find((item) => item.id === entry.academicYearId);
+        const isFromOtherYear = entry.academicYearId !== currentYearId;
         return (
         <button
           type="button"
@@ -554,6 +663,8 @@ function TransactionList({
               {entry.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
               {enrollment ? ` · ${enrollment.className} · ${MEDIUM_LABELS[enrollment.medium]}` : ''}
               {entry.isLateCollection ? ` · For AY ${originalYear?.label || '—'}` : ''}
+              {!entry.isLateCollection && isFromOtherYear && ` · AY ${entryYear?.label || 'Previous AY'}`}
+              {entry.category === OTHER_CATEGORY && account ? ` · ${account.name}` : ''}
             </p>
             {entry.category === TUITION_CATEGORY && <p className="text-xs text-muted-foreground">
               {entry.paymentMethod?.replace('_', ' ') || 'Unknown / Not Recorded'} · {account?.name || 'Unknown account'}
