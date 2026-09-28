@@ -96,8 +96,7 @@ function balanceFor(accountId, data) {
   const sum = (rows, predicate, field = 'amount') => rows
     .filter(predicate)
     .reduce((total, row) => total + Number(row[field]), 0);
-  return Number(account.starting_balance)
-    + sum(data.income_entries, (row) => row.account_id === accountId)
+  return sum(data.income_entries, (row) => row.account_id === accountId)
     - sum(data.expense_entries, (row) => row.account_id === accountId)
     + sum(data.transfers, (row) => row.to_account_id === accountId)
     - sum(data.transfers, (row) => row.from_account_id === accountId)
@@ -185,6 +184,7 @@ async function main() {
     await owner.from('accounts').select('*').order('created_at'),
     'Load setup accounts',
   );
+  assert.ok(initialAccounts.every((account) => Number(account.starting_balance) === 0), 'Setup did not enforce zero account openings');
   const currentYear = expectNoError(
     await owner.from('academic_years').select('*').single(),
     'Load current academic year',
@@ -515,9 +515,9 @@ async function main() {
     overallPosition: 65000,
     currentPending: 900000,
     oldPending: 50000,
-    schoolBalance: 135000,
-    personalBalance: 40000,
-    cashBalance: 25000,
+    schoolBalance: 35000,
+    personalBalance: -10000,
+    cashBalance: 15000,
     archivedBalance: 0,
   });
   assert.equal(data.recoverable_repayments.length, 1);
@@ -554,9 +554,10 @@ async function main() {
     p_name: 'Release School',
     p_type: 'school_bank',
     p_current_balance: 90000,
-  }), 'Set exact current balance');
+  }), 'Call legacy current-balance compatibility RPC');
   data = await loadFinanceData(owner);
-  assert.equal(balanceFor(ids.schoolAccount, data), 90000);
+  assert.equal(balanceFor(ids.schoolAccount, data), 35000, 'Legacy balance input changed the zero-baseline derived balance');
+  assert.equal(Number(data.accounts.find((row) => row.id === ids.schoolAccount).starting_balance), 0);
   assert.deepEqual({
     income: data.income_entries.length,
     expense: data.expense_entries.length,
@@ -564,7 +565,7 @@ async function main() {
     recoverable: data.recoverables.length,
     repayment: data.recoverable_repayments.length,
   }, historyCounts, 'Current-balance edit changed transaction history');
-  pass('Current Balance editing preserves history and reaches the exact entered amount');
+  pass('legacy Current Balance input cannot change the derived ledger balance or transaction history');
 
   const backup = {
     version: '3.0',
@@ -608,6 +609,7 @@ async function main() {
   const otherAccounts = expectNoError(await other.from('accounts').select('*'), 'Load other-user accounts');
   assert.equal(otherAccounts.length, 1);
   assert.equal(otherAccounts[0].name, 'Other Cash');
+  assert.equal(Number(otherAccounts[0].starting_balance), 0, 'Setup accepted a non-zero account opening');
   assert.deepEqual(expectNoError(await other.from('accounts').select('*').eq('id', ids.schoolAccount), 'Cross-user account read'), []);
   assert.deepEqual(expectNoError(await other.from('income_entries').select('*'), 'Cross-user income read'), []);
   const spoofedOwnerInsert = await other.from('accounts').insert({

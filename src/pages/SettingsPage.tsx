@@ -38,7 +38,7 @@ import { signOut, getCurrentUser } from '@/services/auth';
 import { isDemoUser } from '@/lib/demo-mode';
 import { exitDemo } from '@/services/demo';
 import type { RecurringTemplate } from '@/types/finance';
-import { parseNonNegativeAmount, parseStrictNumber } from '@/lib/finance-domain';
+import { parseNonNegativeAmount } from '@/lib/finance-domain';
 import { parseFinanceBackup } from '@/lib/finance-backup';
 import type { Json } from '@/integrations/supabase/types';
 
@@ -62,7 +62,6 @@ export default function SettingsPage() {
   const [editAccountId, setEditAccountId] = useState<string | null>(null);
   const [accName, setAccName] = useState('');
   const [accType, setAccType] = useState<'school_bank' | 'personal_bank' | 'cash'>('personal_bank');
-  const [accBalance, setAccBalance] = useState('');
   const [accSaving, setAccSaving] = useState(false);
 
   // Academic year management
@@ -130,26 +129,22 @@ export default function SettingsPage() {
 
   // Account
   function openAccountAdd() {
-    setEditAccountId(null); setAccName(''); setAccType('personal_bank'); setAccBalance('');
+    setEditAccountId(null); setAccName(''); setAccType('personal_bank');
     setShowAccountModal(true);
   }
   function openAccountEdit(id: string) {
     const acc = accounts.find((a) => a.id === id);
     if (!acc) return;
-    setEditAccountId(id); setAccName(acc.name); setAccType(acc.type); setAccBalance(getAccountBalance(id).toString());
+    setEditAccountId(id); setAccName(acc.name); setAccType(acc.type);
     setShowAccountModal(true);
   }
   async function saveAccount() {
     if (!accName.trim()) { toast({ title: 'Name required', variant: 'destructive' }); return; }
-    const balance = parseStrictNumber(accBalance);
-    if (balance === null) { toast({ title: 'Enter a valid finite balance', variant: 'destructive' }); return; }
     setAccSaving(true);
     try {
       const result = editAccountId
-        ? await accountsService.setCurrentBalance(editAccountId, {
-            name: accName, type: accType, currentBalance: balance,
-          })
-        : await accountsService.create({ name: accName, type: accType, starting_balance: balance, is_archived: false });
+        ? await accountsService.update(editAccountId, { name: accName.trim(), type: accType })
+        : await accountsService.create({ name: accName.trim(), type: accType, starting_balance: 0, is_archived: false });
       if (result.error) throw result.error;
       await refreshAccounts();
       setShowAccountModal(false);
@@ -546,11 +541,11 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="acc-balance">{editAccountId ? 'Current Balance (₹)' : 'Opening Balance (₹)'}</Label>
-              <Input id="acc-balance" type="number" placeholder="0" value={accBalance} onChange={(e) => setAccBalance(e.target.value)} />
+            <div className="rounded-md border bg-muted/30 px-3 py-2">
+              <p className="text-xs text-muted-foreground">Opening Balance</p>
+              <p className="font-mono text-sm font-semibold">{formatINR(0)}</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                {editAccountId ? 'Sets the current balance without changing transaction history.' : 'Amount held before recorded transactions.'}
+                Current balance is calculated from recorded income, expenses, transfers, and recoverable movements.
               </p>
             </div>
             <Button onClick={saveAccount} disabled={accSaving} className="w-full">

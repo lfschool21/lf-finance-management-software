@@ -54,16 +54,6 @@ export async function update(id: string, input: Partial<AccountInsert>) {
   return { data: data as DbAccount | null, error };
 }
 
-export async function setCurrentBalance(id: string, input: { name: string; type: DbAccount['type']; currentBalance: number }) {
-  const { data, error } = await supabase.rpc('set_account_current_balance', {
-    p_account_id: id,
-    p_name: input.name,
-    p_type: input.type,
-    p_current_balance: input.currentBalance,
-  });
-  return { data: data as DbAccount | null, error };
-}
-
 export async function unarchive(id: string) {
   return update(id, { is_archived: false } as Partial<AccountInsert>);
 }

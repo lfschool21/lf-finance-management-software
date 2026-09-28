@@ -176,7 +176,6 @@ export default function BankBalancesPage() {
           <div className="divide-y">
             {accountRows.map((account) => {
               const Icon = ACCOUNT_TYPE_ICON[account.type];
-              const movementTotal = account.net;
 
               return (
                 <div key={account.id} className="px-4 py-4">
@@ -193,9 +192,10 @@ export default function BankBalancesPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:w-[560px]">
-                      <BalancePart label={t('opening')} value={account.startingBalance} />
-                      <BalancePart label={t('netMovement')} value={movementTotal} />
+                    <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4 lg:w-[680px]">
+                      <BalancePart label={t('opening')} value={0} />
+                      <BalancePart label={t('totalIncome')} value={account.income} tone="income" />
+                      <BalancePart label={t('totalExpenses')} value={account.expenses} tone="expense" />
                       <div>
                         <p className="text-muted-foreground">{t('currentBalance')}</p>
                         <p className={cn('money-fit font-mono text-base font-bold', account.balance >= 0 ? 'text-primary' : 'text-expense')}>
@@ -207,9 +207,8 @@ export default function BankBalancesPage() {
 
                   <details className="group mt-3 rounded-lg border bg-muted/20">
                     <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('showReconciliationDetails')}</summary>
-                    <div className="grid gap-2 border-t p-3 text-xs sm:grid-cols-3 lg:grid-cols-6">
-                      <MiniMetric label="Income" value={account.income} tone="income" />
-                      <MiniMetric label="Expenses" value={account.expenses} tone="expense" />
+                    <div className="grid gap-2 border-t p-3 text-xs sm:grid-cols-3 lg:grid-cols-5">
+                      <MiniMetric label={t('netMovement')} value={account.net} tone="neutral" />
                       <MiniMetric label="Transfers In" value={account.transfersIn} tone="neutral" />
                       <MiniMetric label="Transfers Out" value={account.transfersOut} tone="neutral" />
                       <MiniMetric label="Recoverable Advances" value={account.advancesGiven} tone="neutral" />
@@ -273,11 +272,14 @@ export default function BankBalancesPage() {
   );
 }
 
-function BalancePart({ label, value }: { label: string; value: number }) {
+function BalancePart({ label, value, tone = 'neutral' }: { label: string; value: number; tone?: 'income' | 'expense' | 'neutral' }) {
   return (
     <div>
       <p className="text-muted-foreground">{label}</p>
-      <p className={cn('money-fit font-mono text-sm font-semibold', value >= 0 ? 'text-foreground' : 'text-expense')}>
+      <p className={cn(
+        'money-fit font-mono text-sm font-semibold',
+        tone === 'income' ? 'text-income' : tone === 'expense' || value < 0 ? 'text-expense' : 'text-foreground',
+      )}>
         {formatINR(value)}
       </p>
     </div>

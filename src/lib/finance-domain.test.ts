@@ -12,7 +12,6 @@ import {
   isRecurringDue,
   parsePositiveAmount,
   parseStrictNumber,
-  requiredStartingBalance,
 } from './finance-domain';
 
 const account: Account = { id: 'a', name: 'Bank', type: 'school_bank', startingBalance: 100_000, isArchived: false };
@@ -27,14 +26,13 @@ function income(overrides: Partial<IncomeEntry> = {}): IncomeEntry {
 }
 
 describe('financial domain', () => {
-  it('calculates current balance and translates a desired balance into opening balance', () => {
+  it('calculates current balance from movements with a zero opening baseline', () => {
     const incomes = [income({ amount: 20_000, isLateCollection: false, originalYearId: null })];
     const expenses: ExpenseEntry[] = [{ id: 'e', academicYearId: 'y1', expenseType: 'school', category: 'Salary & Wages', subCategory: '', amount: 5_000, date: new Date(), accountId: 'a', description: '', tags: [], isRecurringInstance: false, recurringTemplateId: null }];
     const transfers: Transfer[] = [{ id: 't', fromAccountId: 'a', toAccountId: 'b', amount: 10_000, date: new Date(), category: 'internal', notes: '' }];
     const movement = getAccountMovement('a', incomes, expenses, transfers);
-    expect(getAccountBalance(account, movement)).toBe(105_000);
-    expect(requiredStartingBalance(90_000, movement)).toBe(85_000);
-    expect(getAccountBalance({ ...account, startingBalance: 85_000 }, movement)).toBe(90_000);
+    expect(getAccountBalance(account, movement)).toBe(5_000);
+    expect(getAccountBalance({ ...account, startingBalance: 85_000 }, movement)).toBe(5_000);
   });
 
   it('keeps cash income sources separate', () => {
@@ -110,6 +108,48 @@ describe('financial domain', () => {
     expect(getAccountMovement('a', [currentTuition, lunch, investment], [], []).income).toBe(22_000);
   });
 
+  it('reconciles mixed tuition, lunch, other income, and expenses to ₹17,000', () => {
+    const entries = [
+      income({ id: 'current-fee', amount: 20_000, isLateCollection: false, originalYearId: null }),
+      income({ id: 'lunch', category: 'Lunch Fees', amount: 5_000, isLateCollection: false, originalYearId: null }),
+      income({ id: 'other', category: 'Other Income', amount: 2_000, isLateCollection: false, originalYearId: null }),
+    ];
+    const expenses: ExpenseEntry[] = [{ id: 'expense', academicYearId: 'y1', expenseType: 'school', category: 'Rent', amount: 10_000, date: new Date(), accountId: 'a' }];
+    const movement = getAccountMovement('a', entries, expenses, []);
+
+    expect(movement.income).toBe(27_000);
+    expect(movement.expenses).toBe(10_000);
+    expect(getAccountBalance(account, movement)).toBe(17_000);
+  });
+
+  it('counts a previous-year tuition cash receipt exactly once in the receiving account', () => {
+    const previousYearPayment = income({ id: 'previous-fee', amount: 3_000, isLateCollection: true, originalYearId: 'y1' });
+    const movement = getAccountMovement('a', [previousYearPayment], [], []);
+
+    expect(movement.income).toBe(3_000);
+    expect(getAccountBalance(account, movement)).toBe(3_000);
+  });
+
+  it('recalculates edits and deletes from the persisted transaction set', () => {
+    const originalIncome = income({ id: 'editable-income', amount: 5_000, isLateCollection: false, originalYearId: null });
+    const originalExpense: ExpenseEntry = { id: 'editable-expense', academicYearId: 'y1', expenseType: 'school', category: 'Rent', amount: 10_000, date: new Date(), accountId: 'a' };
+    expect(getAccountBalance(account, getAccountMovement('a', [originalIncome], [originalExpense], []))).toBe(-5_000);
+
+    const editedIncome = { ...originalIncome, amount: 7_000 };
+    const editedExpense = { ...originalExpense, amount: 8_000 };
+    expect(getAccountBalance(account, getAccountMovement('a', [editedIncome], [editedExpense], []))).toBe(-1_000);
+    expect(getAccountBalance(account, getAccountMovement('a', [], [], []))).toBe(0);
+  });
+
+  it('isolates movements by their selected account id', () => {
+    const accountB: Account = { id: 'b', name: 'Cash', type: 'cash', startingBalance: 50_000, isArchived: false };
+    const entries = [income({ amount: 12_000, accountId: 'a', isLateCollection: false, originalYearId: null })];
+    const expenses: ExpenseEntry[] = [{ id: 'b-expense', academicYearId: 'y1', expenseType: 'home', category: 'Groceries', amount: 4_000, date: new Date(), accountId: 'b' }];
+
+    expect(getAccountBalance(account, getAccountMovement('a', entries, expenses, []))).toBe(12_000);
+    expect(getAccountBalance(accountB, getAccountMovement('b', entries, expenses, []))).toBe(-4_000);
+  });
+
   it('replacing a transfer keeps one record, moves only cash, and preserves the combined total', () => {
     const accountB: Account = { id: 'b', name: 'Cash', type: 'cash', startingBalance: 50_000, isArchived: false };
     const edited: Transfer[] = [{ id: 'same-id', fromAccountId: 'a', toAccountId: 'b', amount: 10_000, date: new Date(), category: 'cash_withdrawal', notes: '' }];
@@ -117,9 +157,9 @@ describe('financial domain', () => {
     const balanceB = getAccountBalance(accountB, getAccountMovement('b', [], [], edited));
     expect(edited).toHaveLength(1);
     expect(edited[0].id).toBe('same-id');
-    expect(balanceA).toBe(90_000);
-    expect(balanceB).toBe(60_000);
-    expect(balanceA + balanceB).toBe(150_000);
+    expect(balanceA).toBe(-10_000);
+    expect(balanceB).toBe(10_000);
+    expect(balanceA + balanceB).toBe(0);
   });
 
   it('recalculates an edited old-fee payment without counting the old row twice', () => {

@@ -8,14 +8,13 @@ import { getCurrentAcademicYear, getAcademicYearDates } from '@/utils/academic-y
 import { useFinanceStore } from '@/store/finance-store';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/services/supabase';
-import { parseNonNegativeAmount, parseStrictNumber } from '@/lib/finance-domain';
+import { parseNonNegativeAmount } from '@/lib/finance-domain';
 import { DemoBanner } from '@/components/DemoBanner';
 
 interface AccountDraft {
   key: string;
   name: string;
   type: 'school_bank' | 'personal_bank' | 'cash';
-  balance: string;
 }
 
 interface RecurringDraft {
@@ -68,12 +67,10 @@ export default function SetupWizard() {
     key: 'school',
     name: '',
     type: 'school_bank',
-    balance: '',
   });
   const [personalAccounts, setPersonalAccounts] = useState<AccountDraft[]>([
-    { key: 'p1', name: '', type: 'personal_bank', balance: '' },
+    { key: 'p1', name: '', type: 'personal_bank' },
   ]);
-  const [cashBalance, setCashBalance] = useState('');
 
   // Step 2: Academic Year
   const currentAY = getCurrentAcademicYear();
@@ -97,7 +94,7 @@ export default function SetupWizard() {
     if (personalAccounts.length >= 5) return;
     setPersonalAccounts((prev) => [
       ...prev,
-      { key: `p${Date.now()}`, name: '', type: 'personal_bank', balance: '' },
+      { key: `p${Date.now()}`, name: '', type: 'personal_bank' },
     ]);
   }
 
@@ -121,13 +118,13 @@ export default function SetupWizard() {
       const allAccountDrafts = [
         schoolAccount,
         ...personalAccounts,
-        { key: 'cash', name: 'Cash at Home', type: 'cash' as const, balance: cashBalance },
+        { key: 'cash', name: 'Cash at Home', type: 'cash' as const },
       ];
-      const accountsPayload = allAccountDrafts.map((draft) => {
-        const startingBalance = parseStrictNumber(draft.balance || '0');
-        if (startingBalance === null) throw new Error(`Enter a valid finite opening balance for ${draft.name || 'Cash at Home'}`);
-        return { name: draft.name.trim() || 'Cash at Home', type: draft.type, starting_balance: startingBalance };
-      });
+      const accountsPayload = allAccountDrafts.map((draft) => ({
+        name: draft.name.trim() || 'Cash at Home',
+        type: draft.type,
+        starting_balance: 0,
+      }));
       const target = parseNonNegativeAmount(targetFees || '0');
       if (target === null || !ayStartDate || !ayEndDate || ayStartDate > ayEndDate) {
         throw new Error('Enter valid academic-year dates and a non-negative tuition target');
@@ -206,6 +203,9 @@ export default function SetupWizard() {
         {step === 1 && (
           <div className="space-y-5 rounded-lg border bg-card p-5">
             <h2 className="text-lg font-semibold">Set Up Your Accounts</h2>
+            <p className="text-xs text-muted-foreground">
+              Every account opens at {formatINR(0)}. Current balances are derived from recorded transactions.
+            </p>
 
             {/* School Account */}
             <div className="space-y-2">
@@ -214,12 +214,6 @@ export default function SetupWizard() {
                 placeholder="e.g., SBI School Account"
                 value={schoolAccount.name}
                 onChange={(e) => setSchoolAccount({ ...schoolAccount, name: e.target.value })}
-              />
-              <Input
-                type="number"
-                placeholder="Starting balance (₹)"
-                value={schoolAccount.balance}
-                onChange={(e) => setSchoolAccount({ ...schoolAccount, balance: e.target.value })}
               />
             </div>
 
@@ -235,16 +229,6 @@ export default function SetupWizard() {
                       onChange={(e) =>
                         setPersonalAccounts((prev) =>
                           prev.map((a) => (a.key === acc.key ? { ...a, name: e.target.value } : a))
-                        )
-                      }
-                    />
-                    <Input
-                      type="number"
-                      placeholder="Starting balance (₹)"
-                      value={acc.balance}
-                      onChange={(e) =>
-                        setPersonalAccounts((prev) =>
-                          prev.map((a) => (a.key === acc.key ? { ...a, balance: e.target.value } : a))
                         )
                       }
                     />
@@ -272,12 +256,7 @@ export default function SetupWizard() {
             {/* Cash */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Cash at Home</label>
-              <Input
-                type="number"
-                placeholder="Current cash balance (₹)"
-                value={cashBalance}
-                onChange={(e) => setCashBalance(e.target.value)}
-              />
+              <p className="rounded-md border bg-muted/30 px-3 py-2 font-mono text-sm">{formatINR(0)}</p>
             </div>
 
             <Button onClick={() => setStep(2)} disabled={!canProceedStep1()} className="w-full">
@@ -363,28 +342,24 @@ export default function SetupWizard() {
               <div className="space-y-1.5">
                 <ReviewRow
                   label={`${schoolAccount.name || 'School Account'}`}
-                  value={formatINR(parseFloat(schoolAccount.balance) || 0)}
+                  value={formatINR(0)}
                 />
                 {personalAccounts.map((a) => (
                   <ReviewRow
                     key={a.key}
                     label={`${a.name}`}
-                    value={formatINR(parseFloat(a.balance) || 0)}
+                    value={formatINR(0)}
                   />
                 ))}
                 <ReviewRow
                   label="Cash at Home"
-                  value={formatINR(parseFloat(cashBalance) || 0)}
+                  value={formatINR(0)}
                 />
               </div>
               <div className="mt-2 rounded bg-muted px-3 py-2 text-sm font-semibold">
                 Total Starting Balance:{' '}
                 <span className="font-mono">
-                  {formatINR(
-                    (parseFloat(schoolAccount.balance) || 0) +
-                    personalAccounts.reduce((s, a) => s + (parseFloat(a.balance) || 0), 0) +
-                    (parseFloat(cashBalance) || 0)
-                  )}
+                  {formatINR(0)}
                 </span>
               </div>
             </div>

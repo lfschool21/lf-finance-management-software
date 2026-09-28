@@ -190,12 +190,12 @@ export function getAccountMovement(
   };
 }
 
-export function getAccountBalance(account: Account, movement: AccountMovement): number {
-  return account.startingBalance + movement.net;
-}
-
-export function requiredStartingBalance(desiredCurrentBalance: number, movement: AccountMovement): number {
-  return desiredCurrentBalance - movement.net;
+export function getAccountBalance(_account: Account, movement: AccountMovement): number {
+  // `startingBalance` is retained on Account so legacy database rows and
+  // backups remain readable, but it is intentionally not part of the live
+  // accounting model. Every account starts at zero and all liquidity is
+  // derived from persisted movements.
+  return movement.net;
 }
 
 export function inferTransferCategory(from: AccountType, to: AccountType): TransferCategory {

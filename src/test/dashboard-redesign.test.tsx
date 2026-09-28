@@ -313,7 +313,7 @@ describe('Dashboard Redesign and Financial Operational Integrity', () => {
   });
 
   it('6. Available Balance reflects getTotalBalance across all accounts', () => {
-    // Starting balance 2,50,000 + 50,000 = 3,00,000
+    // Stored legacy opening values are ignored; this fixture has no movements.
     render(
       <MemoryRouter>
         <Dashboard />
@@ -321,7 +321,7 @@ describe('Dashboard Redesign and Financial Operational Integrity', () => {
     );
 
     expect(screen.getByText('Available Balance')).toBeInTheDocument();
-    expect(screen.getByText('₹3L')).toBeInTheDocument();
+    expect(screen.getAllByText('₹0').length).toBeGreaterThanOrEqual(1);
   });
 
   it('7. School Profit strictly excludes personal/home expenses', () => {
@@ -395,7 +395,7 @@ describe('Dashboard Redesign and Financial Operational Integrity', () => {
 
     // School profit remains 0
     expect(screen.getByText('Available Balance')).toBeInTheDocument();
-    expect(screen.getByText('₹3L')).toBeInTheDocument();
+    expect(screen.getAllByText('₹0').length).toBeGreaterThanOrEqual(1);
   });
 
   it('9. Recoverable advances are not counted as school expenses', () => {
@@ -598,7 +598,7 @@ describe('Dashboard Redesign and Financial Operational Integrity', () => {
       </MemoryRouter>
     );
 
-    const addExpenseBtn = screen.getByRole('button', { name: /Add Expense/ });
+    const addExpenseBtn = screen.getByRole('button', { name: /^Add Expense$/ });
     expect(addExpenseBtn).toBeInTheDocument();
 
     const recordFeeBtn = screen.getByRole('button', { name: /Record Fee Payment/ });
@@ -775,7 +775,7 @@ describe('Dashboard Redesign and Financial Operational Integrity', () => {
 
     // English numbers remain visible
     expect(screen.getAllByText('₹15,00,000').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('₹3L')).toBeInTheDocument();
+    expect(screen.getAllByText('₹0').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('3')).toBeInTheDocument();
 
     // Check that no Gujarati digits [૦-૯] appear anywhere in the rendered text

@@ -272,6 +272,7 @@ export const translations = {
     // Expenses Page & Modals
     expensesTitle: 'Expenses',
     expensesSubtitle: 'Record and monitor school operating and extra expenses',
+    totalIncome: 'Total Income',
     totalExpenses: 'Total Expenses',
     schoolOperatingExpenses: 'School Operating Expenses',
     personalHomeExpenses: 'Home / Personal Expenses',
@@ -649,6 +650,7 @@ export const translations = {
     // Expenses Page & Modals
     expensesTitle: 'Expenses',
     expensesSubtitle: 'સ્કૂલ ઓપરેટિંગ અને અન્ય ખર્ચ નોંધો અને મોનિટર કરો',
+    totalIncome: 'Total Income',
     totalExpenses: 'Total Expenses',
     schoolOperatingExpenses: 'School Operating Expenses',
     personalHomeExpenses: 'Home / Personal Expenses',
