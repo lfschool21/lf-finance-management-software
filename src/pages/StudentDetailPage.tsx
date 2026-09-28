@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useStudentStore } from '@/store/student-store';
 import { useFinanceStore } from '@/store/finance-store';
-import { getStudentFeeSummary, getStudentPreviousPending } from '@/lib/student-fees';
+import { getCurrentYearFeeSummary, getStudentFeeSummary, getStudentPreviousPending } from '@/lib/student-fees';
 import type { IncomeEntry } from '@/types/finance';
 import { MEDIUM_LABELS, type StudentEnrollment } from '@/types/students';
 import { formatINR } from '@/utils/currency';
@@ -140,7 +140,7 @@ export default function StudentDetailPage() {
   // Current year fee summary
   const currentSummary = useMemo(() => {
     if (!current) return null;
-    return getStudentFeeSummary(current, incomeEntries);
+    return getCurrentYearFeeSummary(current, incomeEntries);
   }, [current, incomeEntries]);
 
   // Historical enrollments (all except current)

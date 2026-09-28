@@ -9,6 +9,8 @@ import { RecordPreviousPaymentModal } from '@/components/students/RecordPrevious
 import { AddHistoricalFeeModal } from '@/components/students/AddHistoricalFeeModal';
 import type { Student, StudentEnrollment } from '@/types/students';
 import type { AcademicYear, Account, IncomeEntry } from '@/types/finance';
+import type { StudentPaymentInsert } from '@/services/income';
+import type { EnrollmentInput, StudentInput } from '@/services/students';
 
 describe('Student Fee Card & Previous-Year Payment Simplification Acceptance Tests', () => {
   const currentYear: AcademicYear = {
@@ -97,22 +99,22 @@ describe('Student Fee Card & Previous-Year Payment Simplification Acceptance Tes
       transfers: [],
       recoverables: [],
       recoverableRepayments: [],
-      addIncome: vi.fn(async (input: any) => {
+      recordStudentPayment: vi.fn(async (input: StudentPaymentInsert) => {
         const id = 'inc-' + Math.random().toString(36).substring(2, 9);
         const newEntry: IncomeEntry = {
           id,
-          category: (input.category || (input.type === 'tuition' ? 'Tuition Fees' : input.type)) as any,
+          category: 'Tuition Fees',
           amount: input.amount,
-          date: input.date instanceof Date ? input.date : new Date(input.date),
+          date: new Date(input.date),
           academicYearId: input.academic_year_id,
           accountId: input.account_id,
-          isLateCollection: Boolean(input.is_late_collection),
+          isLateCollection: Boolean(input.original_year_id),
           originalYearId: input.original_year_id || null,
           studentEnrollmentId: input.student_enrollment_id || null,
           paymentMethod: input.payment_method || null,
           paymentReference: input.payment_reference || null,
           notes: input.notes || '',
-          tags: input.tags || [],
+          tags: [],
         };
         useFinanceStore.setState((state) => ({
           incomeEntries: [newEntry, ...state.incomeEntries],
@@ -381,7 +383,7 @@ describe('Student Fee Card & Previous-Year Payment Simplification Acceptance Tes
     useStudentStore.setState({
       students: [carryStudent],
       enrollments: [carryCurrentEnrollment],
-      saveStudent: vi.fn(async (_studentInput: any, enrollmentInput: any) => {
+      saveStudent: vi.fn(async (_studentInput: StudentInput, enrollmentInput: EnrollmentInput) => {
         const id = enrollmentInput.id || 'enr-hist-' + Math.random().toString(36).substring(2, 7);
         const saved: StudentEnrollment = {
           id,

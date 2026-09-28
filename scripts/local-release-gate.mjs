@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
@@ -300,35 +301,104 @@ async function main() {
   }), 'Edit existing student fee account');
   currentEnrollment = editedStudentAccount.enrollment;
 
-  expectNoError(await owner.from('income_entries').insert([
-    {
-      user_id: ownerAuth.user.id, academic_year_id: ids.currentYear, type: 'tuition', amount: 100000,
-      date: '2026-08-01', account_id: ids.schoolAccount, is_late_collection: false,
-      original_year_id: null, notes: 'Current tuition release gate', tags: ['release-gate'],
-      student_enrollment_id: currentEnrollment.id, payment_method: 'upi', payment_reference: 'UPI-RG-001',
-    },
-    {
-      user_id: ownerAuth.user.id, academic_year_id: ids.currentYear, type: 'tuition', amount: 30000,
-      date: '2026-08-02', account_id: ids.schoolAccount, is_late_collection: true,
-      original_year_id: ids.oldYear, notes: 'Old fees release gate', tags: ['release-gate'],
-      student_enrollment_id: oldEnrollment.id, payment_method: 'cash', payment_reference: 'CASH-RG-001',
-    },
-    {
-      user_id: ownerAuth.user.id, academic_year_id: ids.currentYear, type: 'lunch', amount: 10000,
-      date: '2026-08-03', account_id: ids.schoolAccount, is_late_collection: false,
-      original_year_id: null, notes: 'Lunch release gate', tags: ['release-gate'],
-    },
-    {
-      user_id: ownerAuth.user.id, academic_year_id: ids.currentYear, type: 'other', amount: 50000,
-      date: '2026-08-04', account_id: ids.schoolAccount, is_late_collection: false,
-      original_year_id: null, notes: 'Investment income release gate', tags: ['release-gate'],
-    },
-    {
-      user_id: ownerAuth.user.id, academic_year_id: ids.currentYear, type: 'other', amount: 1000,
-      date: '2026-08-05', account_id: ids.archivedAccount, is_late_collection: false,
-      original_year_id: null, notes: 'Archived account identity credit', tags: ['release-gate'],
-    },
-  ]), 'Create all income source types');
+  const paymentRequestId = randomUUID();
+  const currentPaymentArgs = {
+    p_client_request_id: paymentRequestId,
+    p_student_enrollment_id: currentEnrollment.id,
+    p_academic_year_id: ids.currentYear,
+    p_amount: 100000,
+    p_date: '2026-08-01',
+    p_account_id: ids.schoolAccount,
+    p_payment_method: 'upi',
+    p_original_year_id: null,
+    p_payment_reference: 'UPI-RG-001',
+    p_notes: 'Current tuition release gate',
+  };
+  const firstPayment = expectNoError(
+    await owner.rpc('record_student_fee_payment', currentPaymentArgs),
+    'Create current student fee payment',
+  );
+  const retriedPayment = expectNoError(
+    await owner.rpc('record_student_fee_payment', currentPaymentArgs),
+    'Retry current student fee payment idempotently',
+  );
+  assert.equal(retriedPayment.id, firstPayment.id, 'Payment retry created a duplicate row');
+  assert.equal(
+    (expectNoError(
+      await owner.from('income_entries').select('id').eq('client_request_id', paymentRequestId),
+      'Count idempotent payment rows',
+    )).length,
+    1,
+    'Payment retry persisted more than one row',
+  );
+
+  const changedRetry = await owner.rpc('record_student_fee_payment', {
+    ...currentPaymentArgs,
+    p_amount: 100001,
+  });
+  assert.ok(changedRetry.error, 'A reused request id accepted different payment details');
+
+  const rejectedOverpayment = await owner.rpc('record_student_fee_payment', {
+    ...currentPaymentArgs,
+    p_client_request_id: randomUUID(),
+    p_amount: 50000,
+  });
+  assert.ok(rejectedOverpayment.error, 'Student payment over the remaining balance unexpectedly succeeded');
+  assert.equal(
+    (expectNoError(
+      await owner.from('income_entries').select('id').eq('student_enrollment_id', currentEnrollment.id),
+      'Verify failed payment rollback',
+    )).length,
+    1,
+    'A rejected student payment left a partial income row',
+  );
+
+  const directTuitionInsert = await owner.from('income_entries').insert({
+    user_id: ownerAuth.user.id,
+    academic_year_id: ids.currentYear,
+    type: 'tuition',
+    amount: 1,
+    date: '2026-08-01',
+    account_id: ids.schoolAccount,
+    is_late_collection: false,
+    student_enrollment_id: currentEnrollment.id,
+    payment_method: 'cash',
+  });
+  assert.ok(directTuitionInsert.error, 'Direct authenticated tuition insert unexpectedly succeeded');
+
+  const tuitionThroughNonFeeRpc = await owner.rpc('create_non_fee_income', {
+    p_academic_year_id: ids.currentYear,
+    p_type: 'tuition',
+    p_amount: 1,
+    p_date: '2026-08-01',
+    p_account_id: ids.schoolAccount,
+    p_notes: 'Must be rejected',
+    p_tags: [],
+  });
+  assert.ok(tuitionThroughNonFeeRpc.error, 'Non-fee income RPC accepted tuition');
+  pass('student payment idempotency, failed-request rollback, overpayment, and tuition authority guards');
+
+  expectNoError(await owner.rpc('record_student_fee_payment', {
+    p_client_request_id: randomUUID(), p_student_enrollment_id: oldEnrollment.id,
+    p_academic_year_id: ids.currentYear, p_amount: 30000, p_date: '2026-08-02',
+    p_account_id: ids.schoolAccount, p_payment_method: 'cash', p_original_year_id: ids.oldYear,
+    p_payment_reference: 'CASH-RG-001', p_notes: 'Old fees release gate',
+  }), 'Create previous-year student fee payment');
+  expectNoError(await owner.rpc('create_non_fee_income', {
+    p_academic_year_id: ids.currentYear, p_type: 'lunch', p_amount: 10000,
+    p_date: '2026-08-03', p_account_id: ids.schoolAccount,
+    p_notes: 'Lunch release gate', p_tags: ['release-gate'],
+  }), 'Create lunch income');
+  expectNoError(await owner.rpc('create_non_fee_income', {
+    p_academic_year_id: ids.currentYear, p_type: 'other', p_amount: 50000,
+    p_date: '2026-08-04', p_account_id: ids.schoolAccount,
+    p_notes: 'Investment income release gate', p_tags: ['release-gate'],
+  }), 'Create investment income');
+  expectNoError(await owner.rpc('create_non_fee_income', {
+    p_academic_year_id: ids.currentYear, p_type: 'other', p_amount: 1000,
+    p_date: '2026-08-05', p_account_id: ids.archivedAccount,
+    p_notes: 'Archived account identity credit', p_tags: ['release-gate'],
+  }), 'Create archived-account identity credit');
 
   expectNoError(await owner.from('expense_entries').insert([
     {
@@ -508,16 +578,10 @@ async function main() {
     file_size: Buffer.byteLength(JSON.stringify(backup)),
     status: 'success',
   }), 'Write local backup log');
-  expectNoError(await owner.from('income_entries').insert({
-    user_id: ownerAuth.user.id,
-    academic_year_id: ids.currentYear,
-    type: 'other',
-    amount: 999,
-    date: '2026-08-21',
-    account_id: ids.cashAccount,
-    is_late_collection: false,
-    original_year_id: null,
-    notes: 'Mutation before restore',
+  expectNoError(await owner.rpc('create_non_fee_income', {
+    p_academic_year_id: ids.currentYear, p_type: 'other', p_amount: 999,
+    p_date: '2026-08-21', p_account_id: ids.cashAccount,
+    p_notes: 'Mutation before restore', p_tags: [],
   }), 'Mutate before restore');
   expectNoError(await owner.rpc('restore_finance_backup', { p_backup: backup }), 'Restore valid backup');
   data = await loadFinanceData(owner);

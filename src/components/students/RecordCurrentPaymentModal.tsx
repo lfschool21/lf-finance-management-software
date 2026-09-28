@@ -1,19 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useFinanceStore } from '@/store/finance-store';
-import { useStudentStore } from '@/store/student-store';
 import type { Student, StudentEnrollment } from '@/types/students';
 import type { PaymentMethod } from '@/types/finance';
-import { getFeeCollected, parseDateOnly, parsePositiveAmount } from '@/lib/finance-domain';
+import { createClientRequestId, parseDateOnly, parsePositiveAmount } from '@/lib/finance-domain';
 import { formatINR } from '@/utils/currency';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, Banknote, Smartphone, Check, Building2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import * as academicYearsService from '@/services/academicYears';
 
 interface RecordCurrentPaymentModalProps {
   open: boolean;
@@ -38,12 +36,9 @@ export function RecordCurrentPaymentModal({
     accounts,
     currentYearId,
     academicYears,
-    incomeEntries,
-    addIncome,
+    recordStudentPayment,
     getYearForDate,
-    refreshAcademicYears,
   } = useFinanceStore();
-  const { enrollments } = useStudentStore();
 
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
@@ -52,6 +47,8 @@ export function RecordCurrentPaymentModal({
   const [paymentReference, setPaymentReference] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saveInFlightRef = useRef(false);
+  const paymentRequestIdRef = useRef(createClientRequestId());
 
   const activeAccounts = useMemo(
     () => accounts.filter((a) => !a.isArchived),
@@ -73,6 +70,10 @@ export function RecordCurrentPaymentModal({
   }, [academicYears, enrollment.academicYearId]);
 
   const yearLabel = enrollmentYear?.label || 'Current Session';
+
+  useEffect(() => {
+    if (open) paymentRequestIdRef.current = createClientRequestId();
+  }, [open]);
 
   // Set defaults when modal opens, clamping date within active academic year if needed
   useEffect(() => {
@@ -129,6 +130,7 @@ export function RecordCurrentPaymentModal({
   }
 
   async function handleSave() {
+    if (saveInFlightRef.current) return;
     setError(null);
     const parsedAmount = parsePositiveAmount(amount);
 
@@ -158,45 +160,20 @@ export function RecordCurrentPaymentModal({
       return;
     }
 
+    saveInFlightRef.current = true;
     setSaving(true);
     try {
-      // Auto-sync academic year target_tuition_fees if needed
-      const oblYear = academicYears.find((y) => y.id === targetYearId);
-      if (oblYear) {
-        const currentPaidAmt = getFeeCollected(incomeEntries, oblYear.id);
-        const studentTotal = enrollments
-          .filter((e) => e.academicYearId === targetYearId)
-          .reduce(
-            (sum, e) =>
-              sum + (e.annualFeeAmount || 0),
-            0
-          );
-        const needed = Math.max(studentTotal, currentPaidAmt + parsedAmount);
-        if (oblYear.targetTuitionFees < needed) {
-          try {
-            await academicYearsService.update(oblYear.id, { target_tuition_fees: needed });
-            if (refreshAcademicYears) {
-              await refreshAcademicYears();
-            }
-          } catch (syncErr) {
-            console.warn('Could not auto-sync academic year target fees:', syncErr);
-          }
-        }
-      }
-
-      await addIncome({
-        type: 'tuition',
+      await recordStudentPayment({
+        client_request_id: paymentRequestIdRef.current,
         amount: parsedAmount,
         date,
         academic_year_id: targetYearId,
         account_id: accountId,
-        is_late_collection: false,
         original_year_id: null,
         student_enrollment_id: enrollment.id,
         payment_method: paymentMethod,
         payment_reference: paymentReference.trim() || null,
         notes: `Current-Year Fee Payment — Class ${enrollment.className}`,
-        tags: [],
       });
 
       toast({
@@ -218,6 +195,7 @@ export function RecordCurrentPaymentModal({
         variant: 'destructive',
       });
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   }

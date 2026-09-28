@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFinanceStore } from '@/store/finance-store';
 import { useStudentStore } from '@/store/student-store';
 import {
+  getCurrentYearFeeSummary,
   getStudentFeeSummary,
   getStudentPreviousPending,
   groupRosterByClassWithPrevious,
@@ -233,7 +234,7 @@ export default function StudentsPage() {
       const student = studentMap.get(enrollment.studentId);
       if (!student) continue;
 
-      const fees = getStudentFeeSummary(enrollment, incomeEntries);
+      const fees = getCurrentYearFeeSummary(enrollment, incomeEntries);
       const previous = getStudentPreviousPending(
         enrollment.studentId,
         yearId,

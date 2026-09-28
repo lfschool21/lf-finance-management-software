@@ -49,6 +49,14 @@ export function parseNonNegativeAmount(value: string): number | null {
   return parsed !== null && parsed >= 0 ? parsed : null;
 }
 
+export function createClientRequestId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const value = Math.floor(Math.random() * 16);
+    return (char === 'x' ? value : (value & 0x3) | 0x8).toString(16);
+  });
+}
+
 export function dateKey(value: Date | string): string {
   if (typeof value === 'string') return value.slice(0, 10);
   const year = value.getFullYear();

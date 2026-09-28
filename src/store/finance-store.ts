@@ -186,7 +186,8 @@ interface FinanceState {
   toggleDarkMode: () => void;
   reset: () => void;
   init: (force?: boolean, targetUserId?: string) => Promise<void>;
-  addIncome: (data: incomeService.IncomeInsert) => Promise<void>;
+  addIncome: (data: incomeService.NonFeeIncomeInsert) => Promise<void>;
+  recordStudentPayment: (data: incomeService.StudentPaymentInsert) => Promise<void>;
   updateIncome: (id: string, data: Partial<incomeService.IncomeInsert>) => Promise<void>;
   deleteIncome: (id: string) => Promise<void>;
   addExpense: (data: expensesService.ExpenseInsert) => Promise<void>;
@@ -396,6 +397,17 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     if (error || !created) throw error || new Error('Failed to create income');
     set((state) => ({
       incomeEntries: [mapIncome(created), ...state.incomeEntries],
+    }));
+  },
+
+  recordStudentPayment: async (data) => {
+    const { data: created, error } = await incomeService.recordStudentPayment(data);
+    if (error || !created) throw error || new Error('Failed to record student payment');
+    const mapped = mapIncome(created);
+    set((state) => ({
+      incomeEntries: state.incomeEntries.some((entry) => entry.id === mapped.id)
+        ? state.incomeEntries.map((entry) => entry.id === mapped.id ? mapped : entry)
+        : [mapped, ...state.incomeEntries],
     }));
   },
 

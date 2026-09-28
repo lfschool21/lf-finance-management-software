@@ -200,7 +200,7 @@ describe('AddIncomeModal dropdowns', () => {
     expect(screen.queryByText('Investment / Extra')).not.toBeInTheDocument();
   });
 
-  it('retains all 3 income types (Tuition, Lunch, Investment/Extra) for normal Add Income page', () => {
+  it('keeps normal Add Income limited to non-student income', () => {
     render(
       <BrowserRouter>
         <AddIncomeModal
@@ -210,11 +210,9 @@ describe('AddIncomeModal dropdowns', () => {
       </BrowserRouter>
     );
 
-    // All three options must be present on the normal Add Income page
-    expect(screen.getByText('Tuition Fees')).toBeInTheDocument();
+    expect(screen.queryByText('Tuition Fees')).not.toBeInTheDocument();
     expect(screen.getByText('Lunch Fees')).toBeInTheDocument();
     expect(screen.getByText('Investment / Extra')).toBeInTheDocument();
   });
 });
-
 

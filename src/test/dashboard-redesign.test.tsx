@@ -239,6 +239,28 @@ describe('Dashboard Redesign and Financial Operational Integrity', () => {
     expect(screen.getByText('₹15K')).toBeInTheDocument();
   });
 
+  it('3b. A linked ₹2,000 payment increases dashboard fees collected by exactly ₹2,000', () => {
+    useFinanceStore.setState({
+      incomeEntries: [{
+        id: 'inc-exact-2000',
+        academicYearId: 'ay-2026-27',
+        category: 'Tuition Fees',
+        amount: 2000,
+        date: new Date(2026, 6, 1),
+        accountId: 'acc-school-bank',
+        isLateCollection: false,
+        originalYearId: null,
+        studentEnrollmentId: 'enr-guj-1',
+        paymentMethod: 'cash',
+      }],
+    });
+
+    render(<MemoryRouter><Dashboard /></MemoryRouter>);
+
+    expect(screen.getAllByText('₹2K').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('₹4K')).not.toBeInTheDocument();
+  });
+
   it('4. Previous-year fee receipts remain correctly identified under Last Year Pending Fees', () => {
     const latePayment: IncomeEntry = {
       id: 'inc-late-1',
@@ -569,7 +591,7 @@ describe('Dashboard Redesign and Financial Operational Integrity', () => {
     expect(screen.getByText('No transactions recorded yet.')).toBeInTheDocument();
   });
 
-  it('19. Quick actions (Record Fee Payment, Add Expense) trigger modals', () => {
+  it('19. Record Fee Payment routes to Students while Add Expense remains available', () => {
     render(
       <MemoryRouter>
         <Dashboard />
@@ -582,7 +604,7 @@ describe('Dashboard Redesign and Financial Operational Integrity', () => {
     const recordFeeBtn = screen.getByRole('button', { name: /Record Fee Payment/ });
     expect(recordFeeBtn).toBeInTheDocument();
     fireEvent.click(recordFeeBtn);
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith('/students');
   });
 
   it('20. Medium cards drill down directly to Gujarati and English workspaces', () => {
@@ -648,6 +670,13 @@ describe('Dashboard Redesign and Financial Operational Integrity', () => {
       incomeEntries: [payment],
       expenseEntries: [recordedExpense],
     });
+    useStudentStore.setState((state) => ({
+      enrollments: state.enrollments.map((enrollment) =>
+        enrollment.id === 'enr-guj-1'
+          ? { ...enrollment, annualFeeAmount: 100000, additionalOutstandingAmount: 0 }
+          : enrollment
+      ),
+    }));
 
     render(
       <MemoryRouter>

@@ -10,6 +10,7 @@ import {
 } from '@/lib/finance-domain';
 import {
   calculateAverageFees,
+  getCurrentYearFeeSummary,
   getStudentFeeSummary,
   getStudentPreviousPending,
   summarizeRoster,
@@ -27,7 +28,6 @@ import { CashFlowChart } from '@/components/dashboard/CashFlowChart';
 import { ExpenseCategorySummary } from '@/components/dashboard/ExpenseCategorySummary';
 import { RecentActivity, type DashboardTransaction } from '@/components/dashboard/RecentActivity';
 
-import { AddIncomeModal } from '@/components/AddIncomeModal';
 import { AddExpenseModal } from '@/components/AddExpenseModal';
 import { TransferModal } from '@/components/TransferModal';
 import { RecurringReviewModal } from '@/components/RecurringReviewModal';
@@ -53,7 +53,6 @@ export default function Dashboard() {
   const { enrollments } = useStudentStore();
   const navigate = useNavigate();
 
-  const [showIncome, setShowIncome] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [showRecurring, setShowRecurring] = useState(false);
@@ -177,7 +176,7 @@ export default function Dashboard() {
     // Unrealized Expenses calculation:
     // Total fees collected from students (including roster opening collections) or recorded finance tuition
     const studentRosterCollected = activeCurrentEnrollments
-      .map((e) => getStudentFeeSummary(e, incomeEntries).collected)
+      .map((e) => getCurrentYearFeeSummary(e, incomeEntries).collected)
       .reduce((sum, val) => sum + val, 0);
     const totalFeesCollected = Math.max(
       studentRosterCollected,
@@ -371,7 +370,7 @@ export default function Dashboard() {
       {/* 1. Header & Actions */}
       <DashboardHeader
         academicYearLabel={currentYear?.label}
-        onRecordFee={() => setShowIncome(true)}
+        onRecordFee={() => navigate('/students')}
         onAddExpense={() => setShowExpense(true)}
         onTransfer={() => setShowTransfer(true)}
       />
@@ -461,7 +460,6 @@ export default function Dashboard() {
       <RecentActivity transactions={recentTransactions} />
 
       {/* Operation Modals */}
-      <AddIncomeModal isOpen={showIncome} onClose={() => setShowIncome(false)} />
       <AddExpenseModal isOpen={showExpense} onClose={() => setShowExpense(false)} />
       <TransferModal isOpen={showTransfer} onClose={() => setShowTransfer(false)} />
       <RecurringReviewModal isOpen={showRecurring} onClose={() => setShowRecurring(false)} />

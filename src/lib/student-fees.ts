@@ -75,6 +75,28 @@ export function getStudentFeeSummary(
   };
 }
 
+/** Current-year view that excludes separately reported historical debt. */
+export function getCurrentYearFeeSummary(
+  enrollment: StudentEnrollment,
+  incomeEntries: IncomeEntry[],
+  excludeEntryId?: string,
+): StudentFeeSummary {
+  const full = getStudentFeeSummary(enrollment, incomeEntries, excludeEntryId);
+  const obligation = Math.max(0, enrollment.annualFeeAmount || 0);
+  const collected = Math.min(obligation, Math.max(0, full.collected));
+  const pending = Math.max(0, obligation - collected);
+  const status = collected <= EPSILON ? 'not_paid' : pending <= EPSILON ? 'paid' : 'partially_paid';
+
+  return {
+    ...full,
+    obligation,
+    collected,
+    pending,
+    collectionPercent: obligation > 0 ? Math.min(100, (collected / obligation) * 100) : 0,
+    status,
+  };
+}
+
 export function getStudentPreviousPending(
   studentId: string,
   currentYearId: string,
@@ -328,4 +350,3 @@ export function findStudentForEnrollment(
   const enrollment = enrollments.find((item) => item.id === enrollmentId);
   return students.find((student) => student.id === enrollment?.studentId);
 }
-

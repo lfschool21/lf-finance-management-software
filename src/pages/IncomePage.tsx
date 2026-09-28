@@ -20,15 +20,16 @@ import { getIncomeBreakdown, isPreviousAcademicYear, parseNonNegativeAmount } fr
 import { useStudentStore } from '@/store/student-store';
 import { getStudentFeeSummary, getStudentPreviousPending } from '@/lib/student-fees';
 import { MEDIUM_LABELS } from '@/types/students';
+import { useNavigate } from 'react-router-dom';
 
 export default function IncomePage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { incomeEntries, academicYears, currentYearId, refreshAcademicYears, getPendingForYear } = useFinanceStore();
-  const { enrollments } = useStudentStore();
+  const { students, enrollments } = useStudentStore();
   const [tab, setTab] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [editEntry, setEditEntry] = useState<IncomeEntry | undefined>();
-  const [lateYearId, setLateYearId] = useState<string | undefined>();
 
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [targetValue, setTargetValue] = useState('');
@@ -122,19 +123,34 @@ export default function IncomePage() {
 
   function openAdd() {
     setEditEntry(undefined);
-    setLateYearId(undefined);
     setShowModal(true);
   }
 
   function openEdit(entry: IncomeEntry) {
+    if (entry.category === TUITION_CATEGORY) {
+      const enrollment = enrollments.find((item) => item.id === entry.studentEnrollmentId);
+      const student = students.find((item) => item.id === enrollment?.studentId);
+      if (student) {
+        navigate(`/students/${student.id}`);
+      } else {
+        toast({
+          title: 'Historical tuition entry is read-only here',
+          description: 'Student fee payments are now managed from the Students section.',
+        });
+      }
+      return;
+    }
     setEditEntry(entry);
     setShowModal(true);
   }
 
   function openLatePayment(yearId: string) {
-    setEditEntry(undefined);
-    setLateYearId(yearId);
-    setShowModal(true);
+    void yearId;
+    navigate('/students');
+    toast({
+      title: 'Record fee payments from Students',
+      description: 'Open the student and choose Record Previous-Year Payment.',
+    });
   }
 
   function openEditTarget() {
@@ -421,7 +437,7 @@ export default function IncomePage() {
         </TabsContent>
       </Tabs>
 
-      <AddIncomeModal isOpen={showModal} onClose={() => setShowModal(false)} editEntry={editEntry} presetLateYearId={lateYearId} />
+      <AddIncomeModal isOpen={showModal} onClose={() => setShowModal(false)} editEntry={editEntry} />
 
       {/* Edit Target Modal */}
       <Dialog open={showTargetModal} onOpenChange={setShowTargetModal}>

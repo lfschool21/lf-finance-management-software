@@ -4,6 +4,7 @@ import type { StudentEnrollment } from '@/types/students';
 import {
   calculateAverageFees,
   calculateClassAverageFees,
+  getCurrentYearFeeSummary,
   getStudentFeeSummary,
   groupRosterByClass,
   groupRosterByClassWithPrevious,
@@ -32,6 +33,33 @@ describe('student fee domain', () => {
     expect(getStudentFeeSummary({ ...enrollment, openingCollectedCash: 0, openingCollectedUpi: 0 }, []).status).toBe('not_paid');
     expect(getStudentFeeSummary(enrollment, [payment(22000, 'cash')]).status).toBe('paid');
   });
+  it('keeps assigned fee stable while first, repeated, and full payments reduce pending', () => {
+    const assigned = { ...enrollment, annualFeeAmount: 20000, additionalOutstandingAmount: 0,
+      openingCollectedCash: 0, openingCollectedUpi: 0 };
+    const first = payment(2000, 'cash');
+    const prior = { ...payment(5000, 'cash'), id: 'prior-payment' };
+    const next = { ...payment(2000, 'upi'), id: 'next-payment' };
+    const full = { ...payment(18000, 'upi'), id: 'full-payment' };
+
+    expect(getCurrentYearFeeSummary(assigned, [first])).toMatchObject({
+      obligation: 20000, collected: 2000, pending: 18000,
+    });
+    expect(getCurrentYearFeeSummary(assigned, [prior, next])).toMatchObject({
+      obligation: 20000, collected: 7000, pending: 13000,
+    });
+    expect(getCurrentYearFeeSummary(assigned, [first, full])).toMatchObject({
+      obligation: 20000, collected: 20000, pending: 0, status: 'paid',
+    });
+    expect(calculateAverageFees([assigned], [first]).avgAnnualFeeCharged).toBe(20000);
+  });
+  it('does not present previous-year outstanding as the assigned current-year fee', () => {
+    const legacyCarry = { ...enrollment, annualFeeAmount: 20000, additionalOutstandingAmount: 5000,
+      openingCollectedCash: 2000, openingCollectedUpi: 0 };
+    expect(getStudentFeeSummary(legacyCarry, []).obligation).toBe(25000);
+    expect(getCurrentYearFeeSummary(legacyCarry, [])).toMatchObject({
+      obligation: 20000, collected: 2000, pending: 18000,
+    });
+  });
   it('normalizes supported medium aliases but does not guess unknown values', () => {
     expect(normalizeMedium(' ENG ')).toBe('english');
     expect(normalizeMedium('Guj')).toBe('gujarati');
@@ -48,7 +76,7 @@ describe('student fee domain', () => {
       { ...enrollment, id: 'e1', studentId: 's1', annualFeeAmount: 20000, className: 'Class 1', medium: 'gujarati' },
       { ...enrollment, id: 'e2', studentId: 's2', annualFeeAmount: 30000, className: 'Class 1', medium: 'gujarati' },
       { ...enrollment, id: 'e3', studentId: 's3', annualFeeAmount: 40000, className: 'Class 2', medium: 'english' },
-      { ...enrollment, id: 'e4', studentId: 's4', annualFeeAmount: 10000, className: 'Class 2', status: 'transferred' },
+      { ...enrollment, id: 'e4', studentId: 's4', annualFeeAmount: 10000, className: 'Class 2', status: 'left' },
     ];
     // 3 active students: total annual fee = 20k + 30k + 40k = 90k, avg = 30k
     const avg = calculateAverageFees(rows, []);

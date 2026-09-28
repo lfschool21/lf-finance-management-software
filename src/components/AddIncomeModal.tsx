@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,8 +15,7 @@ import { Loader2, X, IndianRupee, UtensilsCrossed, PlusCircle } from 'lucide-rea
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { TUITION_CATEGORY, LUNCH_CATEGORY, OTHER_CATEGORY, type AcademicYear, type IncomeDbType, type IncomeEntry, type PaymentMethod } from '@/types/finance';
-import * as academicYearsService from '@/services/academicYears';
-import { getFeeCollected, getFeeOutstanding, isPreviousAcademicYear, parseDateOnly, parsePositiveAmount } from '@/lib/finance-domain';
+import { createClientRequestId, getFeeOutstanding, isPreviousAcademicYear, parseDateOnly, parsePositiveAmount } from '@/lib/finance-domain';
 import { useStudentStore } from '@/store/student-store';
 import { getStudentFeeSummary } from '@/lib/student-fees';
 import { MEDIUM_LABELS } from '@/types/students';
@@ -49,12 +48,12 @@ export function AddIncomeModal({
   tuitionOnly = false,
 }: AddIncomeModalProps) {
   const { t } = useTranslation();
-  const { accounts, academicYears, currentYearId, incomeEntries, addIncome, updateIncome, deleteIncome, getYearForDate, refreshAcademicYears } = useFinanceStore();
+  const { accounts, academicYears, currentYearId, incomeEntries, addIncome, recordStudentPayment, updateIncome, deleteIncome, getYearForDate } = useFinanceStore();
   const { students, enrollments } = useStudentStore();
 
   const isTuitionOnly = tuitionOnly || !!presetStudentEnrollmentId;
 
-  const [incomeType, setIncomeType] = useState<IncomeType>('tuition');
+  const [incomeType, setIncomeType] = useState<IncomeType>(isTuitionOnly ? 'tuition' : 'lunch');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [accountId, setAccountId] = useState('');
@@ -71,6 +70,8 @@ export function AddIncomeModal({
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const saveInFlightRef = useRef(false);
+  const paymentRequestIdRef = useRef(createClientRequestId());
   const navigate = useNavigate();
 
   const isEdit = !!editEntry;
@@ -81,7 +82,6 @@ export function AddIncomeModal({
       ];
     }
     return [
-      { key: 'tuition' as const, label: 'Tuition Fees', icon: IndianRupee },
       { key: 'lunch' as const,   label: 'Lunch Fees',   icon: UtensilsCrossed },
       { key: 'other' as const,   label: 'Investment / Extra', icon: PlusCircle },
     ];
@@ -215,7 +215,8 @@ export function AddIncomeModal({
         setNotes(editEntry.notes);
         setTags(editEntry.tags);
       } else {
-        setIncomeType('tuition');
+        setIncomeType(isTuitionOnly ? 'tuition' : 'lunch');
+        paymentRequestIdRef.current = createClientRequestId();
         setAmount('');
         const presetEnrollment = enrollments.find((item) => item.id === presetStudentEnrollmentId);
         const targetYear = presetEnrollment
@@ -308,8 +309,8 @@ export function AddIncomeModal({
     if (amt === null) errs.amount = 'Enter a finite amount greater than zero';
     if (!date) errs.date = 'Date is required';
     if (!accountId) errs.accountId = 'Select an account';
-    if (incomeType === 'tuition' && selectedStudentId && !selectedEnrollmentId) {
-      errs.studentEnrollmentId = 'Select which fee balance this payment applies to';
+    if (incomeType === 'tuition' && !selectedEnrollmentId) {
+      errs.studentEnrollmentId = 'Select which student fee balance this payment applies to';
     }
     if (selectedEnrollmentId && !selectedStudentObligation) {
       errs.studentEnrollmentId = 'Select an outstanding fee balance';
@@ -351,31 +352,11 @@ export function AddIncomeModal({
   }
 
   async function handleSave() {
+    if (saveInFlightRef.current) return;
     if (!validate()) return;
+    saveInFlightRef.current = true;
     setSaving(true);
     try {
-      // Auto-sync academic year target_tuition_fees if it is 0 or less than needed
-      if (incomeType === 'tuition') {
-        const targetObligationYearId = (isLateCollection && originalYearId) ? originalYearId : academicYearId;
-        const oblYear = academicYears.find((y) => y.id === targetObligationYearId);
-        if (oblYear) {
-          const amtVal = parsePositiveAmount(amount) || 0;
-          const currentPaid = getFeeCollected(incomeEntries, oblYear.id, editEntry?.id);
-          const studentTotal = enrollments
-            .filter((e) => e.academicYearId === targetObligationYearId)
-            .reduce((sum, e) => sum + (e.annualFeeAmount || 0), 0);
-          const needed = Math.max(studentTotal, currentPaid + amtVal);
-          if (oblYear.targetTuitionFees < needed) {
-            try {
-              await academicYearsService.update(oblYear.id, { target_tuition_fees: needed });
-              await refreshAcademicYears();
-            } catch (syncErr) {
-              console.warn('Could not auto-sync academic year target fees:', syncErr);
-            }
-          }
-        }
-      }
-
       const isVirtualPrev = selectedEnrollmentId.endsWith('__prev');
       const actualEnrollmentId = isVirtualPrev ? selectedEnrollmentId.replace('__prev', '') : selectedEnrollmentId;
 
@@ -397,14 +378,37 @@ export function AddIncomeModal({
       if (isEdit && editEntry) {
         await updateIncome(editEntry.id, payload);
         toast({ title: 'Income updated' });
+      } else if (incomeType === 'tuition') {
+        await recordStudentPayment({
+          client_request_id: paymentRequestIdRef.current,
+          student_enrollment_id: actualEnrollmentId,
+          academic_year_id: academicYearId,
+          amount: parsePositiveAmount(amount)!,
+          date,
+          account_id: accountId,
+          payment_method: paymentMethod,
+          original_year_id: (isLateCollection || isVirtualPrev) ? (originalYearId || null) : null,
+          payment_reference: paymentReference.trim() || null,
+          notes: notes || null,
+        });
+        toast({ title: 'Student payment recorded' });
       } else {
-        await addIncome(payload);
+        await addIncome({
+          type: incomeType === 'lunch' ? 'lunch' : 'other',
+          amount: parsePositiveAmount(amount)!,
+          date,
+          academic_year_id: academicYearId,
+          account_id: accountId,
+          notes: notes || null,
+          tags: tags.length > 0 ? tags : null,
+        });
         toast({ title: 'Income recorded' });
       }
       onClose();
     } catch (err) {
       toast({ title: 'Error', description: err instanceof Error ? err.message : 'Failed to save', variant: 'destructive' });
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   }

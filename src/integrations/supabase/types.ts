@@ -214,6 +214,7 @@ export type Database = {
           academic_year_id: string
           account_id: string
           amount: number
+          client_request_id: string | null
           created_at: string | null
           date: string
           id: string
@@ -232,6 +233,7 @@ export type Database = {
           academic_year_id: string
           account_id: string
           amount: number
+          client_request_id?: string | null
           created_at?: string | null
           date: string
           id?: string
@@ -250,6 +252,7 @@ export type Database = {
           academic_year_id?: string
           account_id?: string
           amount?: number
+          client_request_id?: string | null
           created_at?: string | null
           date?: string
           id?: string
@@ -584,6 +587,18 @@ export type Database = {
         Returns: undefined
       }
       discard_demo_workspace: { Args: Record<string, never>; Returns: undefined }
+      create_non_fee_income: {
+        Args: {
+          p_academic_year_id: string
+          p_type: string
+          p_amount: number
+          p_date: string
+          p_account_id: string
+          p_notes?: string | null
+          p_tags?: string[] | null
+        }
+        Returns: Database['public']['Tables']['income_entries']['Row']
+      }
       ensure_demo_workspace: { Args: Record<string, never>; Returns: undefined }
       import_student_roster: {
         Args: { p_academic_year_id: string; p_rows: Json }
@@ -599,6 +614,21 @@ export type Database = {
           p_template_id: string
         }
         Returns: undefined
+      }
+      record_student_fee_payment: {
+        Args: {
+          p_client_request_id: string
+          p_student_enrollment_id: string
+          p_academic_year_id: string
+          p_amount: number
+          p_date: string
+          p_account_id: string
+          p_payment_method: string
+          p_original_year_id?: string | null
+          p_payment_reference?: string | null
+          p_notes?: string | null
+        }
+        Returns: Database['public']['Tables']['income_entries']['Row']
       }
       reset_demo_workspace: { Args: Record<string, never>; Returns: undefined }
       restore_finance_backup: { Args: { p_backup: Json }; Returns: undefined }

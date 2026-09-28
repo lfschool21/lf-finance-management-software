@@ -12,7 +12,7 @@ describe('requireUserId auth optimization', () => {
     };
 
     vi.spyOn(supabase.auth, 'getSession').mockResolvedValue({
-      data: { session: mockSession as any },
+      data: { session: mockSession as never },
       error: null,
     });
 
@@ -36,7 +36,7 @@ describe('requireUserId auth optimization', () => {
       // Simulate network delay
       await new Promise((res) => setTimeout(res, 20));
       return {
-        data: { user: { id: 'user-fetched-456' } as any },
+        data: { user: { id: 'user-fetched-456' } as never },
         error: null,
       };
     });

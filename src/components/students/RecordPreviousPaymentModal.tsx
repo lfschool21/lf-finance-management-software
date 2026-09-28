@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { useFinanceStore } from '@/store/finance-store';
 import { useStudentStore } from '@/store/student-store';
 import type { Student, StudentEnrollment } from '@/types/students';
 import type { PaymentMethod } from '@/types/finance';
-import { getFeeCollected, parseDateOnly, parsePositiveAmount } from '@/lib/finance-domain';
+import { createClientRequestId, parseDateOnly, parsePositiveAmount } from '@/lib/finance-domain';
 import { formatINR } from '@/utils/currency';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, Banknote, Smartphone, Check, Building2, AlertCircle } from 'lucide-react';
@@ -41,8 +41,7 @@ export function RecordPreviousPaymentModal({
     accounts,
     academicYears,
     currentYearId,
-    incomeEntries,
-    addIncome,
+    recordStudentPayment,
     getYearForDate,
     refreshAcademicYears,
   } = useFinanceStore();
@@ -55,6 +54,8 @@ export function RecordPreviousPaymentModal({
   const [paymentReference, setPaymentReference] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saveInFlightRef = useRef(false);
+  const paymentRequestIdRef = useRef(createClientRequestId());
 
   const activeAccounts = useMemo(
     () => accounts.filter((a) => !a.isArchived),
@@ -72,6 +73,10 @@ export function RecordPreviousPaymentModal({
   );
 
   const displayClass = previousClass || previousEnrollment.className || 'Previous Class';
+
+  useEffect(() => {
+    if (open) paymentRequestIdRef.current = createClientRequestId();
+  }, [open]);
 
   // Set defaults when modal opens, clamping date within active academic year if needed
   useEffect(() => {
@@ -128,6 +133,7 @@ export function RecordPreviousPaymentModal({
   }
 
   async function handleSave() {
+    if (saveInFlightRef.current) return;
     setError(null);
     const parsedAmount = parsePositiveAmount(amount);
 
@@ -148,6 +154,7 @@ export function RecordPreviousPaymentModal({
       return;
     }
 
+    saveInFlightRef.current = true;
     setSaving(true);
     try {
       // 1. Determine booking academic year (accounting year receiving the payment)
@@ -282,117 +289,49 @@ export function RecordPreviousPaymentModal({
           throw new Error('Failed to resolve historical enrollment record');
         }
 
-        // If current enrollment had additionalOutstandingAmount, clear it since it's now tracked in historical enrollment
-        if (currentEnrollment && currentEnrollment.additionalOutstandingAmount > 0) {
-          try {
-            await saveStudent(
-              {
-                id: student.id,
-                admission_number: student.admissionNumber || null,
-                full_name: student.fullName,
-                status: student.status,
-                notes: student.notes || null,
-              },
-              {
-                id: currentEnrollment.id,
-                academic_year_id: currentEnrollment.academicYearId,
-                class_name: currentEnrollment.className,
-                medium: currentEnrollment.medium,
-                annual_fee_amount: currentEnrollment.annualFeeAmount,
-                additional_outstanding_amount: 0,
-                opening_collected_cash: currentEnrollment.openingCollectedCash,
-                opening_collected_upi: currentEnrollment.openingCollectedUpi,
-                opening_collected_other: currentEnrollment.openingCollectedOther,
-                opening_snapshot_date: currentEnrollment.openingSnapshotDate,
-                status: currentEnrollment.status,
-                notes: currentEnrollment.notes || null,
-              }
-            );
-          } catch (syncErr) {
-            console.warn('Could not reset current enrollment additionalOutstandingAmount:', syncErr);
-          }
-        }
-      } else {
-        // Target enrollment exists - ensure total fee ceiling can cover this payment
-        const existingPaid =
-          incomeEntries
-            .filter((i) => i.studentEnrollmentId === targetEnrollment!.id)
-            .reduce((sum, i) => sum + i.amount, 0) +
-          (targetEnrollment.openingCollectedCash || 0) +
-          (targetEnrollment.openingCollectedUpi || 0) +
-          (targetEnrollment.openingCollectedOther || 0);
-
-        const minRequired = existingPaid + parsedAmount;
-        const totalFee =
-          (targetEnrollment.annualFeeAmount || 0) +
-          (targetEnrollment.additionalOutstandingAmount || 0);
-
-        if (totalFee < minRequired) {
-          await saveStudent(
-            {
-              id: student.id,
-              admission_number: student.admissionNumber || null,
-              full_name: student.fullName,
-              status: student.status,
-              notes: student.notes || null,
-            },
-            {
-              id: targetEnrollment.id,
-              academic_year_id: targetEnrollment.academicYearId,
-              class_name: targetEnrollment.className,
-              medium: targetEnrollment.medium,
-              annual_fee_amount: minRequired,
-              additional_outstanding_amount: targetEnrollment.additionalOutstandingAmount || 0,
-              opening_collected_cash: targetEnrollment.openingCollectedCash || 0,
-              opening_collected_upi: targetEnrollment.openingCollectedUpi || 0,
-              opening_collected_other: targetEnrollment.openingCollectedOther || 0,
-              opening_snapshot_date: targetEnrollment.openingSnapshotDate || null,
-              status: targetEnrollment.status,
-              notes: targetEnrollment.notes || null,
-            }
-          );
-        }
       }
 
-      // 4. Auto-sync target academic year target_tuition_fees ceiling
-      const oblYear = academicYears.find((y) => y.id === targetYearId);
-      if (oblYear) {
-        const currentPaid = getFeeCollected(incomeEntries, oblYear.id);
-        const latestEnrollments = useStudentStore.getState().enrollments;
-        const studentTotal = latestEnrollments
-          .filter((e) => e.academicYearId === targetYearId)
-          .reduce(
-            (sum, e) =>
-              sum + (e.annualFeeAmount || 0),
-            0
-          );
-        const needed = Math.max(studentTotal, currentPaid + parsedAmount);
-        if (oblYear.targetTuitionFees < needed) {
-          try {
-            await academicYearsService.update(oblYear.id, { target_tuition_fees: needed });
-            if (refreshAcademicYears) {
-              await refreshAcademicYears();
-            }
-          } catch (syncErr) {
-            console.warn('Could not auto-sync academic year target fees:', syncErr);
+      // If carry-forward debt was stored on the current enrollment, transfer
+      // its representation only after the historical obligation exists. A
+      // payment never increases either enrollment's assigned fee.
+      if (currentEnrollment && currentEnrollment.additionalOutstandingAmount > 0) {
+        await saveStudent(
+          {
+            id: student.id,
+            admission_number: student.admissionNumber || null,
+            full_name: student.fullName,
+            status: student.status,
+            notes: student.notes || null,
+          },
+          {
+            id: currentEnrollment.id,
+            academic_year_id: currentEnrollment.academicYearId,
+            class_name: currentEnrollment.className,
+            medium: currentEnrollment.medium,
+            annual_fee_amount: currentEnrollment.annualFeeAmount,
+            additional_outstanding_amount: 0,
+            opening_collected_cash: currentEnrollment.openingCollectedCash,
+            opening_collected_upi: currentEnrollment.openingCollectedUpi,
+            opening_collected_other: currentEnrollment.openingCollectedOther,
+            opening_snapshot_date: currentEnrollment.openingSnapshotDate,
+            status: currentEnrollment.status,
+            notes: currentEnrollment.notes || null,
           }
-        }
+        );
       }
 
-      // 5. Add income transaction with strict accounting separation
-      await addIncome({
-        type: 'tuition',
+      // 4. Add one authoritative income transaction with strict accounting separation.
+      await recordStudentPayment({
+        client_request_id: paymentRequestIdRef.current,
         amount: parsedAmount,
         date,
         academic_year_id: bookingYearId,
         account_id: accountId,
-        is_late_collection: true,
         original_year_id: targetYearId,
         student_enrollment_id: targetEnrollment.id,
         payment_method: paymentMethod,
         payment_reference: paymentReference.trim() || null,
         notes: `Previous-Year Fee Payment — ${displayClass}`,
-        tags: [],
       });
 
       toast({
@@ -414,6 +353,7 @@ export function RecordPreviousPaymentModal({
         variant: 'destructive',
       });
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   }

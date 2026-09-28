@@ -126,7 +126,6 @@ describe('Average Fees Calculation and UI Feature', () => {
       transfers: [],
       recoverables: [],
       recoverableRepayments: [],
-      recurringExpenses: [],
       pendingRecurringItems: [],
     });
 
