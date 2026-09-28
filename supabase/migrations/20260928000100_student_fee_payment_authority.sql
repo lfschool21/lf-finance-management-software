@@ -28,7 +28,7 @@ CREATE OR REPLACE FUNCTION public.create_non_fee_income(
 RETURNS public.income_entries
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog
 AS $create_non_fee_income$
 DECLARE
   owner_id UUID := auth.uid();
@@ -85,7 +85,7 @@ CREATE OR REPLACE FUNCTION public.record_student_fee_payment(
 RETURNS public.income_entries
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog
 AS $record_student_fee_payment$
 DECLARE
   owner_id UUID := auth.uid();
@@ -187,7 +187,7 @@ $record_student_fee_payment$;
 CREATE OR REPLACE FUNCTION public.enforce_tuition_update_authority()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-SET search_path = public
+SET search_path = pg_catalog
 AS $enforce_tuition_update_authority$
 BEGIN
   IF NEW.type = 'tuition' AND OLD.type <> 'tuition' THEN
