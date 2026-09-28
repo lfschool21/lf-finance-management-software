@@ -29,7 +29,7 @@ RETURNS public.income_entries
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $create_non_fee_income$
 DECLARE
   owner_id UUID := auth.uid();
   created public.income_entries%ROWTYPE;
@@ -37,8 +37,23 @@ BEGIN
   IF owner_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
-  IF p_type NOT IN ('lunch', 'other') THEN
+  IF p_type IS NULL OR p_type NOT IN ('lunch', 'other') THEN
     RAISE EXCEPTION 'Student tuition payments must be recorded from the Students section';
+  END IF;
+  IF p_amount IS NULL OR p_amount <= 0 THEN
+    RAISE EXCEPTION 'Income amount must be positive';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.academic_years
+    WHERE id = p_academic_year_id AND user_id = owner_id
+  ) THEN
+    RAISE EXCEPTION 'Academic year does not belong to the current user';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.accounts
+    WHERE id = p_account_id AND user_id = owner_id
+  ) THEN
+    RAISE EXCEPTION 'Account does not belong to the current user';
   END IF;
 
   INSERT INTO public.income_entries (
@@ -53,7 +68,7 @@ BEGIN
 
   RETURN created;
 END;
-$$;
+$create_non_fee_income$;
 
 CREATE OR REPLACE FUNCTION public.record_student_fee_payment(
   p_client_request_id UUID,
@@ -71,7 +86,7 @@ RETURNS public.income_entries
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $record_student_fee_payment$
 DECLARE
   owner_id UUID := auth.uid();
   enrollment public.student_enrollments%ROWTYPE;
@@ -88,8 +103,27 @@ BEGIN
   IF p_amount IS NULL OR p_amount <= 0 THEN
     RAISE EXCEPTION 'Payment amount must be positive';
   END IF;
-  IF p_payment_method NOT IN ('cash', 'upi', 'bank_transfer', 'cheque', 'other') THEN
+  IF p_payment_method IS NULL
+     OR p_payment_method NOT IN ('cash', 'upi', 'bank_transfer', 'cheque', 'other') THEN
     RAISE EXCEPTION 'Invalid payment method';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.academic_years
+    WHERE id = p_academic_year_id AND user_id = owner_id
+  ) THEN
+    RAISE EXCEPTION 'Booking academic year does not belong to the current user';
+  END IF;
+  IF p_original_year_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.academic_years
+    WHERE id = p_original_year_id AND user_id = owner_id
+  ) THEN
+    RAISE EXCEPTION 'Original academic year does not belong to the current user';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.accounts
+    WHERE id = p_account_id AND user_id = owner_id
+  ) THEN
+    RAISE EXCEPTION 'Account does not belong to the current user';
   END IF;
 
   -- Serialize retries for the same client request before checking for an
@@ -117,10 +151,12 @@ BEGIN
     RETURN created;
   END IF;
 
-  SELECT * INTO enrollment
-  FROM public.student_enrollments
-  WHERE id = p_student_enrollment_id AND user_id = owner_id
-  FOR UPDATE;
+  SELECT e.* INTO enrollment
+  FROM public.student_enrollments e
+  JOIN public.students s
+    ON s.id = e.student_id AND s.user_id = owner_id
+  WHERE e.id = p_student_enrollment_id AND e.user_id = owner_id
+  FOR UPDATE OF e;
 
   IF enrollment.id IS NULL THEN
     RAISE EXCEPTION 'Student enrollment does not belong to the current user';
@@ -143,7 +179,7 @@ BEGIN
 
   RETURN created;
 END;
-$$;
+$record_student_fee_payment$;
 
 -- Authenticated clients retain UPDATE access for the existing payment-editing
 -- workflow. Do not let that permission become an alternate tuition-creation
@@ -152,7 +188,7 @@ CREATE OR REPLACE FUNCTION public.enforce_tuition_update_authority()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SET search_path = public
-AS $$
+AS $enforce_tuition_update_authority$
 BEGIN
   IF NEW.type = 'tuition' AND OLD.type <> 'tuition' THEN
     RAISE EXCEPTION 'Student tuition payments must be created from the Students section';
@@ -164,77 +200,23 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$;
+$enforce_tuition_update_authority$;
 
-DROP TRIGGER IF EXISTS enforce_tuition_update_authority_trigger ON public.income_entries;
-CREATE TRIGGER enforce_tuition_update_authority_trigger
-BEFORE UPDATE ON public.income_entries
-FOR EACH ROW EXECUTE FUNCTION public.enforce_tuition_update_authority();
-
--- Preserve request IDs in new backups while remaining compatible with older
--- backups where the field is absent (and therefore restored as NULL).
-CREATE OR REPLACE FUNCTION public.restore_finance_backup(p_backup JSONB)
-RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE
-  owner_id UUID := auth.uid(); payload JSONB := p_backup->'data'; version TEXT := p_backup->>'version'; table_name TEXT;
+DO $create_tuition_authority_trigger$
 BEGIN
-  IF owner_id IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
-  IF version NOT IN ('1.0', '2.0', '3.0') OR jsonb_typeof(payload) <> 'object' THEN
-    RAISE EXCEPTION 'Unsupported or malformed backup';
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'enforce_tuition_update_authority_trigger'
+      AND tgrelid = 'public.income_entries'::regclass
+      AND NOT tgisinternal
+  ) THEN
+    CREATE TRIGGER enforce_tuition_update_authority_trigger
+    BEFORE UPDATE ON public.income_entries
+    FOR EACH ROW EXECUTE FUNCTION public.enforce_tuition_update_authority();
   END IF;
-  FOREACH table_name IN ARRAY ARRAY['academic_years','accounts','income_entries','expense_entries','transfers','recurring_templates'] LOOP
-    IF jsonb_typeof(payload->table_name) <> 'array' THEN RAISE EXCEPTION 'Backup table % is missing or is not an array', table_name; END IF;
-  END LOOP;
-  IF version IN ('2.0','3.0') AND (jsonb_typeof(payload->'recoverables') <> 'array' OR jsonb_typeof(payload->'recoverable_repayments') <> 'array') THEN
-    RAISE EXCEPTION 'Recoverables data is missing from this backup';
-  END IF;
-  IF version = '3.0' AND (jsonb_typeof(payload->'students') <> 'array' OR jsonb_typeof(payload->'student_enrollments') <> 'array') THEN
-    RAISE EXCEPTION 'Student data is missing from a version 3 backup';
-  END IF;
-
-  DELETE FROM public.recoverable_repayments WHERE user_id = owner_id;
-  DELETE FROM public.recoverables WHERE user_id = owner_id;
-  DELETE FROM public.transfers WHERE user_id = owner_id;
-  DELETE FROM public.expense_entries WHERE user_id = owner_id;
-  DELETE FROM public.income_entries WHERE user_id = owner_id;
-  DELETE FROM public.student_enrollments WHERE user_id = owner_id;
-  DELETE FROM public.students WHERE user_id = owner_id;
-  DELETE FROM public.recurring_templates WHERE user_id = owner_id;
-  DELETE FROM public.accounts WHERE user_id = owner_id;
-  DELETE FROM public.academic_years WHERE user_id = owner_id;
-
-  INSERT INTO public.academic_years (id,user_id,label,start_date,end_date,target_tuition_fees,carry_forward_fees,status,created_at,updated_at)
-  SELECT x.id,owner_id,x.label,x.start_date,x.end_date,x.target_tuition_fees,COALESCE(x.carry_forward_fees,0),x.status,COALESCE(x.created_at,NOW()),COALESCE(x.updated_at,NOW())
-  FROM jsonb_to_recordset(payload->'academic_years') AS x(id UUID,user_id UUID,label TEXT,start_date DATE,end_date DATE,target_tuition_fees NUMERIC,carry_forward_fees NUMERIC,status TEXT,created_at TIMESTAMPTZ,updated_at TIMESTAMPTZ);
-  INSERT INTO public.accounts (id,user_id,name,type,starting_balance,is_archived,created_at,updated_at)
-  SELECT x.id,owner_id,x.name,x.type,x.starting_balance,COALESCE(x.is_archived,FALSE),COALESCE(x.created_at,NOW()),COALESCE(x.updated_at,NOW())
-  FROM jsonb_to_recordset(payload->'accounts') AS x(id UUID,user_id UUID,name TEXT,type TEXT,starting_balance NUMERIC,is_archived BOOLEAN,created_at TIMESTAMPTZ,updated_at TIMESTAMPTZ);
-  INSERT INTO public.recurring_templates (id,user_id,expense_type,category,default_amount,recurrence_interval,last_generated_date,is_active,created_at,updated_at)
-  SELECT x.id,owner_id,x.expense_type,x.category,COALESCE(x.default_amount,0),x.recurrence_interval,x.last_generated_date,COALESCE(x.is_active,TRUE),COALESCE(x.created_at,NOW()),COALESCE(x.updated_at,NOW())
-  FROM jsonb_to_recordset(payload->'recurring_templates') AS x(id UUID,user_id UUID,expense_type TEXT,category TEXT,default_amount NUMERIC,recurrence_interval TEXT,last_generated_date DATE,is_active BOOLEAN,created_at TIMESTAMPTZ,updated_at TIMESTAMPTZ);
-  INSERT INTO public.students (id,user_id,admission_number,full_name,status,notes,created_at,updated_at)
-  SELECT x.id,owner_id,x.admission_number,x.full_name,COALESCE(x.status,'active'),x.notes,COALESCE(x.created_at,NOW()),COALESCE(x.updated_at,NOW())
-  FROM jsonb_to_recordset(COALESCE(payload->'students','[]'::JSONB)) AS x(id UUID,user_id UUID,admission_number TEXT,full_name TEXT,status TEXT,notes TEXT,created_at TIMESTAMPTZ,updated_at TIMESTAMPTZ);
-  INSERT INTO public.student_enrollments (id,user_id,student_id,academic_year_id,class_name,medium,annual_fee_amount,additional_outstanding_amount,opening_collected_cash,opening_collected_upi,opening_collected_other,opening_snapshot_date,status,notes,created_at,updated_at)
-  SELECT x.id,owner_id,x.student_id,x.academic_year_id,x.class_name,x.medium,x.annual_fee_amount,COALESCE(x.additional_outstanding_amount,0),COALESCE(x.opening_collected_cash,0),COALESCE(x.opening_collected_upi,0),COALESCE(x.opening_collected_other,0),x.opening_snapshot_date,COALESCE(x.status,'active'),x.notes,COALESCE(x.created_at,NOW()),COALESCE(x.updated_at,NOW())
-  FROM jsonb_to_recordset(COALESCE(payload->'student_enrollments','[]'::JSONB)) AS x(id UUID,user_id UUID,student_id UUID,academic_year_id UUID,class_name TEXT,medium TEXT,annual_fee_amount NUMERIC,additional_outstanding_amount NUMERIC,opening_collected_cash NUMERIC,opening_collected_upi NUMERIC,opening_collected_other NUMERIC,opening_snapshot_date DATE,status TEXT,notes TEXT,created_at TIMESTAMPTZ,updated_at TIMESTAMPTZ);
-  INSERT INTO public.income_entries (id,user_id,academic_year_id,type,amount,date,account_id,is_late_collection,original_year_id,notes,tags,student_enrollment_id,payment_method,payment_reference,client_request_id,created_at,updated_at)
-  SELECT x.id,owner_id,x.academic_year_id,x.type,x.amount,x.date,x.account_id,COALESCE(x.is_late_collection,FALSE),x.original_year_id,x.notes,x.tags,x.student_enrollment_id,x.payment_method,x.payment_reference,x.client_request_id,COALESCE(x.created_at,NOW()),COALESCE(x.updated_at,NOW())
-  FROM jsonb_to_recordset(payload->'income_entries') AS x(id UUID,user_id UUID,academic_year_id UUID,type TEXT,amount NUMERIC,date DATE,account_id UUID,is_late_collection BOOLEAN,original_year_id UUID,notes TEXT,tags TEXT[],student_enrollment_id UUID,payment_method TEXT,payment_reference TEXT,client_request_id UUID,created_at TIMESTAMPTZ,updated_at TIMESTAMPTZ);
-  INSERT INTO public.expense_entries (id,user_id,academic_year_id,expense_type,category,sub_category,amount,date,account_id,description,tags,is_recurring_instance,recurring_template_id,created_at,updated_at)
-  SELECT x.id,owner_id,x.academic_year_id,x.expense_type,x.category,x.sub_category,x.amount,x.date,x.account_id,x.description,x.tags,COALESCE(x.is_recurring_instance,FALSE),x.recurring_template_id,COALESCE(x.created_at,NOW()),COALESCE(x.updated_at,NOW())
-  FROM jsonb_to_recordset(payload->'expense_entries') AS x(id UUID,user_id UUID,academic_year_id UUID,expense_type TEXT,category TEXT,sub_category TEXT,amount NUMERIC,date DATE,account_id UUID,description TEXT,tags TEXT[],is_recurring_instance BOOLEAN,recurring_template_id UUID,created_at TIMESTAMPTZ,updated_at TIMESTAMPTZ);
-  INSERT INTO public.transfers (id,user_id,from_account_id,to_account_id,amount,date,category,notes,created_at,updated_at)
-  SELECT x.id,owner_id,x.from_account_id,x.to_account_id,x.amount,x.date,x.category,x.notes,COALESCE(x.created_at,NOW()),COALESCE(x.updated_at,NOW())
-  FROM jsonb_to_recordset(payload->'transfers') AS x(id UUID,user_id UUID,from_account_id UUID,to_account_id UUID,amount NUMERIC,date DATE,category TEXT,notes TEXT,created_at TIMESTAMPTZ,updated_at TIMESTAMPTZ);
-  INSERT INTO public.recoverables (id,user_id,party_name,original_amount,date_given,source_account_id,notes,created_at,updated_at)
-  SELECT x.id,owner_id,x.party_name,x.original_amount,x.date_given,x.source_account_id,x.notes,COALESCE(x.created_at,NOW()),COALESCE(x.updated_at,NOW())
-  FROM jsonb_to_recordset(COALESCE(payload->'recoverables','[]'::JSONB)) AS x(id UUID,user_id UUID,party_name TEXT,original_amount NUMERIC,date_given DATE,source_account_id UUID,notes TEXT,created_at TIMESTAMPTZ,updated_at TIMESTAMPTZ);
-  INSERT INTO public.recoverable_repayments (id,user_id,recoverable_id,amount,date,account_id,notes,created_at,updated_at)
-  SELECT x.id,owner_id,x.recoverable_id,x.amount,x.date,x.account_id,x.notes,COALESCE(x.created_at,NOW()),COALESCE(x.updated_at,NOW())
-  FROM jsonb_to_recordset(COALESCE(payload->'recoverable_repayments','[]'::JSONB)) AS x(id UUID,user_id UUID,recoverable_id UUID,amount NUMERIC,date DATE,account_id UUID,notes TEXT,created_at TIMESTAMPTZ,updated_at TIMESTAMPTZ);
 END;
-$$;
+$create_tuition_authority_trigger$;
 
 -- Direct inserts previously allowed the generic Income flow to create tuition.
 -- Inserts now go through one of the two narrowly scoped functions above.
