@@ -15,21 +15,25 @@ describe('getPreviousClassName', () => {
     expect(getPreviousClassName('Class 3 B')).toBe('Class 2 B');
   });
 
-  it('handles Class 1 transition to Senior KG', () => {
-    expect(getPreviousClassName('Class 1')).toBe('Senior KG');
-    expect(getPreviousClassName('Std 1')).toBe('Senior KG');
-    expect(getPreviousClassName('Class 1-A')).toBe('Senior KG A');
+  it('handles Class 1 transition to KG2 (Senior KG)', () => {
+    expect(getPreviousClassName('Class 1')).toBe('KG2');
+    expect(getPreviousClassName('Std 1')).toBe('KG2');
+    expect(getPreviousClassName('Class 1-A')).toBe('KG2 A');
   });
 
-  it('handles kindergarten and pre-primary levels', () => {
-    expect(getPreviousClassName('Senior KG')).toBe('Junior KG');
-    expect(getPreviousClassName('UKG')).toBe('Junior KG');
-    expect(getPreviousClassName('Junior KG')).toBe('Nursery');
-    expect(getPreviousClassName('LKG')).toBe('Nursery');
-    expect(getPreviousClassName('Nursery')).toBe('Playgroup');
+  it('handles kindergarten and pre-primary levels with KG1 and KG2', () => {
+    expect(getPreviousClassName('KG2')).toBe('KG1');
+    expect(getPreviousClassName('KG2 A')).toBe('KG1 A');
+    expect(getPreviousClassName('Senior KG')).toBe('KG1');
+    expect(getPreviousClassName('Senior KG A')).toBe('KG1 A');
+    expect(getPreviousClassName('UKG')).toBe('KG1');
+    expect(getPreviousClassName('KG1')).toBe('KG1');
+    expect(getPreviousClassName('Junior KG')).toBe('KG1');
+    expect(getPreviousClassName('LKG')).toBe('KG1');
+    expect(getPreviousClassName('Playgroup')).toBe('KG1');
+    expect(getPreviousClassName('Nursery')).toBe('KG1');
     expect(getPreviousClassName('Balvatika 2')).toBe('Balvatika 1');
-    expect(getPreviousClassName('Balvatika')).toBe('Playgroup');
-    expect(getPreviousClassName('Playgroup')).toBe('Playgroup');
+    expect(getPreviousClassName('Balvatika')).toBe('KG1');
   });
 
   it('handles empty or missing strings safely', () => {

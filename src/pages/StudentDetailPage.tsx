@@ -436,7 +436,7 @@ export default function StudentDetailPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold uppercase tracking-wider text-primary">This Year</span>
                       <Badge variant="outline" className="text-[10px] py-0 h-4">
-                        Class {current.className}
+                        {current.className.startsWith('Class ') ? current.className : current.className}
                       </Badge>
                     </div>
                     <h2 className="text-sm font-semibold text-foreground mt-0.5">

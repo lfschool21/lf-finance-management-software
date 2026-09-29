@@ -23,21 +23,46 @@ export function getPreviousClassName(currentClassName: string | undefined | null
       const cleanPrefix = prefix.trim() ? `${prefix.trim()} ` : (raw.toLowerCase().includes('std') ? 'Std ' : raw.toLowerCase().includes('grade') ? 'Grade ' : 'Class ');
       return `${cleanPrefix}${prevNum}${suffix ? (suffix.startsWith('-') || suffix.startsWith(' ') ? suffix : ` ${suffix}`) : ''}`.trim();
     } else if (num === 1) {
-      // Transition from Class 1 down to Senior KG
+      // Transition from Class 1 down to KG2 (Senior KG)
       const section = suffix.trim() ? ` ${suffix.replace(/^[-_\s]+/, '')}` : '';
-      return `Senior KG${section}`;
+      return `KG2${section}`;
     }
   }
 
   // 2. Pre-primary progressions
-  if (norm.includes('senior') || norm.includes('sr') || norm.includes('ukg') || norm.includes('upper kg')) {
-    const section = raw.match(/[a-z]$/i)?.[0];
-    return section && !norm.endsWith('kg') ? `Junior KG ${section.toUpperCase()}` : 'Junior KG';
+  // KG2 (Senior KG, UKG, Upper KG) -> KG1
+  if (
+    norm.includes('kg2') ||
+    norm.includes('kg 2') ||
+    norm.includes('kg-2') ||
+    norm.includes('senior') ||
+    norm.includes('sr') ||
+    norm.includes('ukg') ||
+    norm.includes('upper kg') ||
+    norm === 'kg'
+  ) {
+    const sectionMatch = raw.match(/[-_\s]+([a-zA-Z])$/);
+    const section = sectionMatch ? ` ${sectionMatch[1].toUpperCase()}` : '';
+    return `KG1${section}`;
   }
 
-  if (norm.includes('junior') || norm.includes('jr') || norm.includes('lkg') || norm.includes('lower kg')) {
-    const section = raw.match(/[a-z]$/i)?.[0];
-    return section && !norm.endsWith('kg') ? `Nursery ${section.toUpperCase()}` : 'Nursery';
+  // KG1 (Playgroup, Junior KG, LKG) -> KG1
+  if (
+    norm.includes('kg1') ||
+    norm.includes('kg 1') ||
+    norm.includes('kg-1') ||
+    norm.includes('junior') ||
+    norm.includes('jr') ||
+    norm.includes('lkg') ||
+    norm.includes('lower kg') ||
+    norm.includes('playgroup') ||
+    norm.includes('play group') ||
+    norm === 'pg' ||
+    norm.startsWith('pg ')
+  ) {
+    const sectionMatch = raw.match(/[-_\s]+([a-zA-Z])$/);
+    const section = sectionMatch ? ` ${sectionMatch[1].toUpperCase()}` : '';
+    return `KG1${section}`;
   }
 
   if (norm.includes('balvatika 3') || norm.includes('bv 3') || norm.includes('bv-3')) {
@@ -47,11 +72,7 @@ export function getPreviousClassName(currentClassName: string | undefined | null
     return 'Balvatika 1';
   }
   if (norm.includes('balvatika') || norm.includes('nursery') || norm.startsWith('nur') || norm === 'bv') {
-    return 'Playgroup';
-  }
-
-  if (norm.includes('playgroup') || norm === 'pg' || norm.startsWith('pg ')) {
-    return 'Playgroup';
+    return 'KG1';
   }
 
   // Fallback: return raw class with "Previous" indicator if unknown

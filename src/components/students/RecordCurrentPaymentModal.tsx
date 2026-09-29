@@ -225,7 +225,7 @@ export function RecordCurrentPaymentModal({
             <div className="sm:text-right">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Class & Year</span>
               <p className="font-semibold text-foreground text-xs leading-tight">
-                Class {enrollment.className} · AY {yearLabel}
+                {enrollment.className.startsWith('Class ') ? enrollment.className : enrollment.className} · AY {yearLabel}
               </p>
             </div>
           </div>

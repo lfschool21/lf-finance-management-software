@@ -8,6 +8,7 @@ import {
   getStudentPreviousPending,
   groupRosterByClassWithPrevious,
   summarizeRoster,
+  normalizeClassName,
 } from '@/lib/student-fees';
 import type { Student, StudentEnrollment, StudentMedium } from '@/types/students';
 import { Button } from '@/components/ui/button';
@@ -227,8 +228,11 @@ export default function StudentsPage() {
   // Students for the currently selected class
   const classRows = useMemo(() => {
     if (!selectedClass) return [];
+    const normalizedSelected = normalizeClassName(selectedClass);
     const rows: StudentRowData[] = [];
-    const classEnrollments = mediumScopedRoster.filter((e) => e.className === selectedClass);
+    const classEnrollments = mediumScopedRoster.filter(
+      (e) => normalizeClassName(e.className) === normalizedSelected
+    );
 
     for (const enrollment of classEnrollments) {
       const student = studentMap.get(enrollment.studentId);
@@ -259,10 +263,11 @@ export default function StudentsPage() {
   };
 
   const handleSelectClass = (className: string) => {
+    const normalized = normalizeClassName(className);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set('medium', activeMedium);
-      next.set('class', className);
+      next.set('class', normalized);
       return next;
     });
   };
@@ -399,7 +404,7 @@ export default function StudentsPage() {
         </div>
       ) : (
         <ClassStudentList
-          className={selectedClass}
+          className={selectedClass ? normalizeClassName(selectedClass) : ''}
           medium={activeMedium}
           rows={classRows}
           onBack={handleBackToClasses}

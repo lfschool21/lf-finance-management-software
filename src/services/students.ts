@@ -1,6 +1,7 @@
 import { requireUserId, supabase } from './supabase';
 import type { Json } from '@/integrations/supabase/types';
 import type { RosterImportRow, StudentMedium, StudentStatus } from '@/types/students';
+import { normalizeClassName } from '@/lib/student-fees';
 
 export interface DbStudent {
   id: string; user_id: string; admission_number: string | null; full_name: string;
@@ -38,9 +39,13 @@ export async function getAll() {
 }
 
 export async function save(student: StudentInput, enrollment: EnrollmentInput) {
+  const normalizedEnrollment = {
+    ...enrollment,
+    class_name: normalizeClassName(enrollment.class_name),
+  };
   const { data, error } = await supabase.rpc('save_student_with_enrollment', {
     p_student: student as unknown as Json,
-    p_enrollment: enrollment as unknown as Json,
+    p_enrollment: normalizedEnrollment as unknown as Json,
   });
   return { data: data as unknown as { student: DbStudent; enrollment: DbStudentEnrollment } | null, error };
 }
@@ -55,7 +60,7 @@ export async function importRoster(academicYearId: string, rows: RosterImportRow
     student_id: row.studentId || null,
     admission_number: row.admissionNumber || null,
     full_name: row.fullName,
-    class_name: row.className,
+    class_name: normalizeClassName(row.className),
     medium: row.medium,
     annual_fee_amount: row.annualFeeAmount,
     additional_outstanding_amount: row.additionalOutstandingAmount,
@@ -64,7 +69,7 @@ export async function importRoster(academicYearId: string, rows: RosterImportRow
     opening_collected_other: row.openingCollectedOther,
     opening_snapshot_date: row.openingSnapshotDate || null,
     previous_academic_year_id: row.previousAcademicYearId || null,
-    previous_class_name: row.previousClassName || null,
+    previous_class_name: row.previousClassName ? normalizeClassName(row.previousClassName) : null,
     previous_medium: row.previousMedium || null,
     previous_annual_fee_amount: row.previousAnnualFeeAmount ?? null,
     previous_opening_collected_cash: row.previousOpeningCollectedCash ?? 0,

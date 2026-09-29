@@ -5,21 +5,36 @@ import type { Student, StudentEnrollment } from '@/types/students';
  * students and rosters can be sorted from lowest grade to highest grade.
  *
  * Progression:
- * 1. Playgroup (PG)
- * 2. Nursery / Balvatika (BV)
- * 3. Junior KG / LKG
- * 4. Senior KG / UKG
- * 5. Class 1 through Class 12
+ * 1. Nursery / Balvatika (BV)
+ * 2. KG1 (Playgroup / Junior KG / LKG / KG1)
+ * 3. KG2 (Senior KG / UKG / Upper KG / KG2)
+ * 4. Class 1 through Class 12
  */
 export function getClassRank(className: string | undefined | null): number {
   const norm = String(className || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (!norm) return 999;
 
   // Pre-primary levels
-  if (norm.includes('playgroup') || norm === 'pg' || norm.startsWith('pg ')) return 1;
-  if (norm.includes('nursery') || norm.startsWith('nur') || norm === 'bv' || norm.includes('balvatika')) return 2;
-  if (norm.includes('junior') || norm.includes('jr') || norm.includes('lkg') || norm.includes('lower kg')) return 3;
-  if (norm.includes('senior') || norm.includes('sr') || norm.includes('ukg') || norm.includes('upper kg') || norm === 'kg') return 4;
+  // 1. Nursery / Balvatika (BV)
+  if (norm.includes('nursery') || norm.startsWith('nur') || norm === 'bv' || norm.includes('balvatika')) return 1;
+
+  // 2. KG1: Playgroup & Junior KG (and abbreviations/synonyms: PG, LKG, Lower KG, KG1)
+  if (
+    /\b(play\s*group|playgroup|pg|junior\s*kg|junior|jr\.?\s*kg|jr|lkg|lower\s*kg|kg\s*[-_]?\s*1)\b/i.test(norm) ||
+    norm === 'pg' || norm === 'lkg' || norm === 'kg1' || norm === 'kg 1' || norm === 'kg-1' ||
+    norm.startsWith('pg ') || norm.startsWith('pg-') || norm.startsWith('kg1') || norm.startsWith('kg 1')
+  ) {
+    return 2;
+  }
+
+  // 3. KG2: Senior KG (and abbreviations/synonyms: UKG, Upper KG, KG2)
+  if (
+    /\b(senior\s*kg|senior|sr\.?\s*kg|sr|ukg|upper\s*kg|kg\s*[-_]?\s*2)\b/i.test(norm) ||
+    norm === 'ukg' || norm === 'kg2' || norm === 'kg 2' || norm === 'kg-2' || norm === 'kg' ||
+    norm.startsWith('kg2') || norm.startsWith('kg 2')
+  ) {
+    return 3;
+  }
 
   // Primary to High School classes: e.g. "Class 1", "Std 5", "Grade 10", "1st", "10"
   const match = norm.match(/(?:class|std|grade)?\s*(\d+)/);

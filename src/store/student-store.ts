@@ -3,6 +3,7 @@ import type { Student, StudentEnrollment, RosterImportRow } from '@/types/studen
 import * as studentsService from '@/services/students';
 import { supabase } from '@/services/supabase';
 import { useFinanceStore } from './finance-store';
+import { normalizeClassName } from '@/lib/student-fees';
 
 const mapStudent = (row: studentsService.DbStudent): Student => ({
   id: row.id, admissionNumber: row.admission_number || '', fullName: row.full_name,
@@ -10,7 +11,7 @@ const mapStudent = (row: studentsService.DbStudent): Student => ({
 });
 const mapEnrollment = (row: studentsService.DbStudentEnrollment): StudentEnrollment => ({
   id: row.id, studentId: row.student_id, academicYearId: row.academic_year_id,
-  className: row.class_name, medium: row.medium, annualFeeAmount: Number(row.annual_fee_amount),
+  className: normalizeClassName(row.class_name), medium: row.medium, annualFeeAmount: Number(row.annual_fee_amount),
   additionalOutstandingAmount: Number(row.additional_outstanding_amount),
   openingCollectedCash: Number(row.opening_collected_cash), openingCollectedUpi: Number(row.opening_collected_upi),
   openingCollectedOther: Number(row.opening_collected_other), openingSnapshotDate: row.opening_snapshot_date,
@@ -124,7 +125,11 @@ export const useStudentStore = create<StudentState>((set, get) => ({
     });
   },
   saveStudent: async (student, enrollment) => {
-    const result = await studentsService.save(student, enrollment);
+    const normalizedEnrollment = {
+      ...enrollment,
+      class_name: normalizeClassName(enrollment.class_name),
+    };
+    const result = await studentsService.save(student, normalizedEnrollment);
     if (result.error || !result.data) throw result.error || new Error('Failed to save student');
     const savedStudent = mapStudent(result.data.student);
     const savedEnrollment = mapEnrollment(result.data.enrollment);

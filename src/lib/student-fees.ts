@@ -12,8 +12,39 @@ export function normalizeMedium(value: unknown): StudentMedium | null {
 }
 
 export function normalizeClassName(value: unknown): string {
-  return String(value ?? '').trim().replace(/\s+/g, ' ');
+  const raw = String(value ?? '').trim().replace(/\s+/g, ' ');
+  if (!raw) return '';
+
+  const norm = raw.toLowerCase();
+
+  // Extract optional section suffix like " A", "-A", " B", "-B"
+  const sectionMatch = raw.match(/[-_\s]+([a-zA-Z])$/);
+  const section = sectionMatch ? ` ${sectionMatch[1].toUpperCase()}` : '';
+
+  // 1. Playgroup & Junior KG (and abbreviations/synonyms: PG, LKG, Lower KG, KG1) -> KG1
+  if (
+    /\b(play[-_\s]*group|playgroup|pg|junior[-_\s]*kg|junior|jr\.?[-_\s]*kg|jr|lkg|lower[-_\s]*kg|kg[-_\s]*1)\b/i.test(norm) ||
+    norm === 'pg' || norm === 'lkg' || norm === 'kg1' || norm === 'kg 1' || norm === 'kg-1'
+  ) {
+    return `KG1${section}`;
+  }
+
+  // 2. Senior KG (and abbreviations/synonyms: UKG, Upper KG, KG2) -> KG2
+  if (
+    /\b(senior[-_\s]*kg|senior|sr\.?[-_\s]*kg|sr|ukg|upper[-_\s]*kg|kg[-_\s]*2)\b/i.test(norm) ||
+    norm === 'ukg' || norm === 'kg2' || norm === 'kg 2' || norm === 'kg-2' || norm === 'kg'
+  ) {
+    return `KG2${section}`;
+  }
+
+  // 3. Other pre-primary: Nursery / Balvatika
+  if (/\b(nursery|nur|balvatika|bv)\b/i.test(norm)) {
+    return `Nursery${section}`;
+  }
+
+  return raw;
 }
+
 
 export function normalizeAdmissionNumber(value: unknown): string {
   return String(value ?? '').trim();
@@ -244,7 +275,8 @@ export function calculateClassAverageFees(
   const groups = new Map<string, StudentEnrollment[]>();
 
   for (const enrollment of active) {
-    const key = `${enrollment.className}__${enrollment.medium}`;
+    const className = normalizeClassName(enrollment.className);
+    const key = `${className}__${enrollment.medium}`;
     const values = groups.get(key) || [];
     values.push(enrollment);
     groups.set(key, values);
@@ -255,7 +287,7 @@ export function calculateClassAverageFees(
     const first = classEnrollments[0];
     const metrics = calculateAverageFees(classEnrollments, incomeEntries);
     results.push({
-      className: first.className,
+      className: normalizeClassName(first.className),
       medium: first.medium,
       totalStudents: metrics.totalStudents,
       totalAnnualFee: metrics.totalAnnualFee,
@@ -276,9 +308,10 @@ export interface ClassRosterSummary extends RosterSummary { className: string }
 export function groupRosterByClass(enrollments: StudentEnrollment[], incomeEntries: IncomeEntry[]): ClassRosterSummary[] {
   const groups = new Map<string, StudentEnrollment[]>();
   enrollments.filter((enrollment) => enrollment.status === 'active').forEach((enrollment) => {
-    const values = groups.get(enrollment.className) || [];
+    const className = normalizeClassName(enrollment.className);
+    const values = groups.get(className) || [];
     values.push(enrollment);
-    groups.set(enrollment.className, values);
+    groups.set(className, values);
   });
   return Array.from(groups.entries()).map(([className, values]) => ({
     className,
@@ -306,10 +339,11 @@ export function groupRosterByClassWithPrevious(
   const groups = new Map<string, ClassCardSummary>();
 
   for (const enrollment of active) {
-    let summary = groups.get(enrollment.className);
+    const className = normalizeClassName(enrollment.className);
+    let summary = groups.get(className);
     if (!summary) {
       summary = {
-        className: enrollment.className,
+        className,
         totalStudents: 0,
         currentYearPending: 0,
         previousYearPending: 0,
@@ -317,7 +351,7 @@ export function groupRosterByClassWithPrevious(
         totalAnnualFee: 0,
         avgAnnualFee: 0,
       };
-      groups.set(enrollment.className, summary);
+      groups.set(className, summary);
     }
 
     const feeSummary = getStudentFeeSummary(enrollment, incomeEntries);

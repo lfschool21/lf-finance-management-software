@@ -13,12 +13,11 @@ import { parseNonNegativeAmount } from '@/lib/finance-domain';
 import { toast } from '@/hooks/use-toast';
 import { ChevronDown, ChevronUp, Loader2, Info } from 'lucide-react';
 import { getPreviousClassName } from '@/utils/class-progression';
+import { normalizeClassName } from '@/lib/student-fees';
 
 const CLASS_OPTIONS = [
-  'Playgroup',
-  'Nursery',
-  'Junior KG',
-  'Senior KG',
+  'KG1',
+  'KG2',
   ...Array.from({ length: 12 }, (_, index) => `Class ${index + 1}`),
 ] as const;
 
@@ -64,7 +63,7 @@ export function AddStudentModal({
     setAdmission(student?.admissionNumber || '');
     const activeYearId = enrollment?.academicYearId || defaultYearId || currentYearId;
     setYearId(activeYearId);
-    setClassName(enrollment?.className || '');
+    setClassName(enrollment?.className ? normalizeClassName(enrollment.className) : '');
     // If editing existing enrollment, preserve its stored medium! If new, use contextual default.
     setMedium(enrollment?.medium ?? defaultMedium ?? 'gujarati');
     setAnnualFee(enrollment?.annualFeeAmount !== undefined ? enrollment.annualFeeAmount.toString() : '');
@@ -129,6 +128,7 @@ export function AddStudentModal({
 
     setSaving(true);
     try {
+      const normalizedClass = normalizeClassName(className);
       await saveStudent(
         {
           id: student?.id,
@@ -140,7 +140,7 @@ export function AddStudentModal({
         {
           id: enrollment?.id,
           academic_year_id: yearId,
-          class_name: className.trim(),
+          class_name: normalizedClass,
           medium,
           annual_fee_amount: fee,
           additional_outstanding_amount: extra,
@@ -182,7 +182,7 @@ export function AddStudentModal({
             {
               id: existingPrevEnr.id,
               academic_year_id: existingPrevEnr.academicYearId,
-              class_name: existingPrevEnr.className || getPreviousClassName(className.trim()),
+              class_name: existingPrevEnr.className ? normalizeClassName(existingPrevEnr.className) : getPreviousClassName(normalizedClass),
               medium: existingPrevEnr.medium || medium,
               annual_fee_amount: extra,
               additional_outstanding_amount: 0,
@@ -205,7 +205,7 @@ export function AddStudentModal({
             },
             {
               academic_year_id: previousYear.id,
-              class_name: getPreviousClassName(className.trim()),
+              class_name: getPreviousClassName(normalizedClass),
               medium,
               annual_fee_amount: extra,
               additional_outstanding_amount: 0,
@@ -373,6 +373,11 @@ export function AddStudentModal({
                   <SelectValue placeholder="Select class" />
                 </SelectTrigger>
                 <SelectContent>
+                  {className && !CLASS_OPTIONS.includes(className as (typeof CLASS_OPTIONS)[number]) && (
+                    <SelectItem key={className} value={className} className="text-xs">
+                      {className}
+                    </SelectItem>
+                  )}
                   {CLASS_OPTIONS.map((cls) => (
                     <SelectItem key={cls} value={cls} className="text-xs">
                       {cls}
